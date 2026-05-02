@@ -2,19 +2,11 @@ import React, { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
-const congestionColors = {
-  low: "#22c55e",
-  medium: "#facc15",
-  high: "#ef4444"
-};
-
 function MapComponent({
   mapboxToken,
   center,
   routes,
   routeData,
-  segments,
-  congestionLevels,
   selectedRouteId,
   sourceCoords,
   destinationCoords,
@@ -30,21 +22,13 @@ function MapComponent({
     Boolean(mapInstance && !mapInstance._removed && mapInstance.getStyle());
 
   const removeLayerIfPresent = (mapInstance, layerId) => {
-    if (!isMapStyleReady(mapInstance)) {
-      return;
-    }
-
-    if (mapInstance.getLayer(layerId)) {
+    if (isMapStyleReady(mapInstance) && mapInstance.getLayer(layerId)) {
       mapInstance.removeLayer(layerId);
     }
   };
 
   const removeSourceIfPresent = (mapInstance, sourceId) => {
-    if (!isMapStyleReady(mapInstance)) {
-      return;
-    }
-
-    if (mapInstance.getSource(sourceId)) {
+    if (isMapStyleReady(mapInstance) && mapInstance.getSource(sourceId)) {
       mapInstance.removeSource(sourceId);
     }
   };
@@ -87,7 +71,6 @@ function MapComponent({
 
   useEffect(() => {
     const map = mapRef.current;
-
     if (!map) {
       return undefined;
     }
@@ -97,13 +80,12 @@ function MapComponent({
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current = [];
 
-      // Draw non-selected routes as lighter comparison lines.
-      routes.forEach((route, routeIndex) => {
+      routes.forEach((route) => {
         const routeSourceId = `${route.id}-source`;
-        const baseLayerId = `${route.id}-base-line`;
+        const routeLayerId = `${route.id}-line`;
         const selected = route.id === selectedRouteId;
 
-        removeLayerIfPresent(map, baseLayerId);
+        removeLayerIfPresent(map, routeLayerId);
         removeSourceIfPresent(map, routeSourceId);
 
         map.addSource(routeSourceId, {
@@ -119,7 +101,7 @@ function MapComponent({
         });
 
         map.addLayer({
-          id: baseLayerId,
+          id: routeLayerId,
           type: "line",
           source: routeSourceId,
           layout: {
@@ -127,88 +109,12 @@ function MapComponent({
             "line-join": "round"
           },
           paint: {
-            "line-color": selected ? "#0f172a" : routeIndex === 1 ? "#64748b" : "#94a3b8",
-            "line-width": selected ? 3 : 5,
-            "line-opacity": selected ? 0.18 : 0.45
+            "line-color": route.color,
+            "line-width": selected ? 8 : 5,
+            "line-opacity": selected ? 0.95 : 0.6
           }
         });
       });
-
-      // Remove the previous active route before drawing the newly selected one.
-      removeLayerIfPresent(map, "active-route-line");
-      removeSourceIfPresent(map, "active-route-source");
-      removeLayerIfPresent(map, "traffic-prediction-line");
-      removeSourceIfPresent(map, "traffic-prediction-source");
-
-      // Draw the selected route as a dedicated GeoJSON source + line layer.
-      if (routeData?.geometry?.length > 1) {
-        map.addSource("active-route-source", {
-          type: "geojson",
-          data: {
-            type: "Feature",
-            geometry: {
-              type: "LineString",
-              coordinates: routeData.geometry
-            },
-            properties: {}
-          }
-        });
-
-        map.addLayer({
-          id: "active-route-line",
-          type: "line",
-          source: "active-route-source",
-          layout: {
-            "line-cap": "round",
-            "line-join": "round"
-          },
-          paint: {
-            "line-color": "#0f172a",
-            "line-width": 8,
-            "line-opacity": 0.35
-          }
-        });
-      }
-
-      // Render each segment independently so prediction colors update smoothly.
-      const trafficFeatures = segments.map((segment) => ({
-        type: "Feature",
-        properties: {
-          color:
-            congestionColors[
-              congestionLevels.find((level) => level.segmentId === segment.id)?.level || "low"
-            ]
-        },
-        geometry: {
-          type: "LineString",
-          coordinates: segment.coordinates
-        }
-      }));
-
-      if (trafficFeatures.length > 0) {
-        map.addSource("traffic-prediction-source", {
-          type: "geojson",
-          data: {
-            type: "FeatureCollection",
-            features: trafficFeatures
-          }
-        });
-
-        map.addLayer({
-          id: "traffic-prediction-line",
-          type: "line",
-          source: "traffic-prediction-source",
-          layout: {
-            "line-cap": "round",
-            "line-join": "round"
-          },
-          paint: {
-            "line-color": ["get", "color"],
-            "line-width": 6,
-            "line-opacity": 1
-          }
-        });
-      }
 
       if (sourceCoords && destinationCoords) {
         const startMarker = new mapboxgl.Marker({ color: "#10b981" })
@@ -227,7 +133,7 @@ function MapComponent({
         map.fitBounds(bounds, { padding: 70, duration: 800 });
       }
 
-      if (routeData?.geometry?.length > 1) {
+      if (routeData?.priority === "high" && routeData.geometry.length > 1) {
         const vehicleElement = document.createElement("div");
         vehicleElement.className = "vehicle-marker";
         vehicleElement.innerHTML =
@@ -283,40 +189,23 @@ function MapComponent({
 
     return () => {
       routes.forEach((route) => {
-        const routeSourceId = `${route.id}-source`;
-        const baseLayerId = `${route.id}-base-line`;
-
-        removeLayerIfPresent(map, baseLayerId);
-        removeSourceIfPresent(map, routeSourceId);
+        removeLayerIfPresent(map, `${route.id}-line`);
+        removeSourceIfPresent(map, `${route.id}-source`);
       });
-
-      removeLayerIfPresent(map, "traffic-prediction-line");
-      removeSourceIfPresent(map, "traffic-prediction-source");
-      removeLayerIfPresent(map, "active-route-line");
-      removeSourceIfPresent(map, "active-route-source");
-
       stopVehicleAnimation();
     };
-  }, [
-    routes,
-    routeData,
-    segments,
-    congestionLevels,
-    selectedRouteId,
-    sourceCoords,
-    destinationCoords
-  ]);
+  }, [routes, routeData, selectedRouteId, sourceCoords, destinationCoords]);
 
   return (
     <div className="map-card">
       <div className="map-toolbar">
         <div className="map-brand">
-          <span className="map-kicker">Live Map Surface</span>
-          <strong>Pune Traffic Twin</strong>
+          <span className="map-kicker">Prediction Surface</span>
+          <strong>Current Routes, Future Ranking</strong>
         </div>
         <div className="map-pills">
-          <span className="map-pill">Interactive map</span>
-          <span className="map-pill">Alternative routes</span>
+          <span className="map-pill">Backend-ranked routes</span>
+          <span className="map-pill">Courier animation</span>
         </div>
       </div>
 
@@ -326,10 +215,10 @@ function MapComponent({
         <div className="map-overlay">
           <div className="map-overlay-card">
             <p>Mapbox token needed</p>
-            <h3>UI is ready for live routing</h3>
+            <h3>Backend integration is ready</h3>
             <span>
-              Add your Mapbox public token in <code>src/App.js</code> to unlock
-              the interactive Pune map and route rendering.
+              Add your Mapbox public token in <code>frontend/.env</code> to
+              unlock the live route rendering experience.
             </span>
           </div>
         </div>

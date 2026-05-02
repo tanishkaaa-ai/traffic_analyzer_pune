@@ -7,6 +7,8 @@ function InputPanel({
   setDestination,
   onGetRoute,
   onSwapLocations,
+  futureTime,
+  onFutureTimeChange,
   loading,
   error
 }) {
@@ -23,21 +25,21 @@ function InputPanel({
             type="button"
             className="preset-chip"
             onClick={() => {
-              setSource("Kharadi, Pune");
-              setDestination("Baner, Pune");
+              setSource("Swargate");
+              setDestination("Hinjewadi");
             }}
           >
-            Kharadi to Baner
+            Swargate to Hinjewadi
           </button>
           <button
             type="button"
             className="preset-chip"
             onClick={() => {
-              setSource("Pimpri, Pune");
-              setDestination("Magarpatta, Pune");
+              setSource("Kothrud");
+              setDestination("Hadapsar");
             }}
           >
-            Pimpri to Magarpatta
+            Kothrud to Hadapsar
           </button>
         </div>
       </div>
@@ -61,6 +63,14 @@ function InputPanel({
             onChange={(event) => setDestination(event.target.value)}
           />
         </label>
+        <label className="input-card">
+          <span>Future Time</span>
+          <input
+            type="datetime-local"
+            value={futureTime}
+            onChange={(event) => onFutureTimeChange(event.target.value)}
+          />
+        </label>
         <button
           type="button"
           className="swap-button"
@@ -81,7 +91,7 @@ function InputPanel({
         </div>
         <div className="mini-stat">
           <span>Simulation</span>
-          <strong>Mock traffic colors</strong>
+          <strong>Backend-ranked routes</strong>
         </div>
       </div>
 

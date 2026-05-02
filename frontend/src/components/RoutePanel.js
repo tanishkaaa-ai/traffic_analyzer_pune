@@ -2,21 +2,53 @@ import React from "react";
 
 const formatDuration = (seconds) => `${Math.round(seconds / 60)} mins`;
 const formatDistance = (meters) => `${(meters / 1000).toFixed(1)} km`;
-const getRouteTone = (index) =>
-  ["Primary", "Alternate", "Fallback"][index] || "Route";
+const formatConfidence = (score) => `${Math.round(score * 100)}%`;
+const formatPredictionTime = (value) => {
+  if (!value) {
+    return "Not set";
+  }
 
-function RoutePanel({ selectedRoute, routes, onSelectRoute, sliderTime }) {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleString();
+};
+
+function RoutePanel({
+  selectedRoute,
+  routes,
+  onSelectRoute,
+  sliderTime,
+  futureTime,
+  predictionContext
+}) {
   return (
     <aside className="route-panel">
       <h2>Route Intelligence</h2>
       <p className="panel-subtitle">
-        Live route preview and mock congestion insights.
+        Backend-ranked route options powered by current TomTom data and
+        future-time ML scoring.
       </p>
 
       <div className="insight-banner">
         <span>Prediction horizon</span>
         <strong>{sliderTime} minutes ahead</strong>
       </div>
+      <div className="insight-banner">
+        <span>Selected time</span>
+        <strong>{formatPredictionTime(futureTime)}</strong>
+      </div>
+      {predictionContext ? (
+        <div className="insight-banner">
+          <span>Backend used</span>
+          <strong>
+            {`${formatPredictionTime(predictionContext.future_time)} | hour ${predictionContext.future_hour} | day ${predictionContext.future_day}`}
+          </strong>
+        </div>
+      ) : null}
 
       {selectedRoute ? (
         <>
@@ -29,12 +61,17 @@ function RoutePanel({ selectedRoute, routes, onSelectRoute, sliderTime }) {
             <strong>{formatDistance(selectedRoute.distance)}</strong>
           </div>
           <div className="stat-card">
-            <span>Risk Score</span>
-            <strong>{selectedRoute.riskScore}%</strong>
+            <span>Confidence</span>
+            <strong>{formatConfidence(selectedRoute.confidence)}</strong>
           </div>
           <div className="recommendation-card">
-            <span>Recommendation</span>
-            <strong>Best route selected</strong>
+            <span>Recommended Route</span>
+            <strong>
+              {selectedRoute.priority === "high"
+                ? "Best route selected"
+                : "Comparison route selected"}
+            </strong>
+            <small>{selectedRoute.riskMessage}</small>
           </div>
         </>
       ) : (
@@ -66,17 +103,20 @@ function RoutePanel({ selectedRoute, routes, onSelectRoute, sliderTime }) {
               <div className="route-copy">
                 <span>Route {index + 1}</span>
                 <small>
-                  {selectedRoute?.id === route.id
-                    ? "Selected corridor"
-                    : "Tap to compare"}
+                  {route.priority === "high"
+                    ? "Recommended"
+                    : route.priority === "medium"
+                      ? "Backup option"
+                      : "Higher delay risk"}
                 </small>
               </div>
               <div className="route-meta">
-                <em>{getRouteTone(index)}</em>
+                <em style={{ color: route.color }}>{route.priority.toUpperCase()}</em>
                 <strong>
                   {formatDuration(route.duration)} -{" "}
                   {formatDistance(route.distance)}
                 </strong>
+                <small>Confidence: {formatConfidence(route.confidence)}</small>
               </div>
             </div>
           ))
@@ -84,18 +124,18 @@ function RoutePanel({ selectedRoute, routes, onSelectRoute, sliderTime }) {
       </div>
 
       <div className="legend">
-        <h3>Traffic Legend</h3>
+        <h3>Route Ranking</h3>
         <div className="legend-item">
           <span className="legend-dot green" />
-          <span>Low congestion</span>
+          <span>High priority</span>
         </div>
         <div className="legend-item">
           <span className="legend-dot yellow" />
-          <span>Medium congestion</span>
+          <span>Medium priority</span>
         </div>
         <div className="legend-item">
           <span className="legend-dot red" />
-          <span>High congestion</span>
+          <span>Low priority</span>
         </div>
       </div>
     </aside>

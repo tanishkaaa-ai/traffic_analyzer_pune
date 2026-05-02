@@ -6,147 +6,89 @@ import RoutePanel from "./components/RoutePanel";
 
 const MAPBOX_TOKEN =
   process.env.REACT_APP_MAPBOX_TOKEN || "YOUR_MAPBOX_TOKEN";
+const API_BASE_URL =
+  process.env.REACT_APP_API_BASE_URL || "http://127.0.0.1:8000";
 const PUNE_CENTER = [73.8567, 18.5204];
 
-const getRandomCongestion = () => {
-  const levels = ["low", "medium", "high"];
-  return levels[Math.floor(Math.random() * levels.length)];
+const buildLocalDateTimeValue = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hour}:${minute}`;
 };
 
-// Split the route geometry into smaller chunks so each segment can carry
-// its own prediction color and risk contribution.
-const chunkRouteGeometry = (coordinates) => {
-  if (!coordinates || coordinates.length < 2) {
-    return [];
-  }
+const buildFutureTimeIso = (futureDate) => {
+  const timezoneOffsetMinutes = -futureDate.getTimezoneOffset();
+  const offsetSign = timezoneOffsetMinutes >= 0 ? "+" : "-";
+  const absoluteOffsetMinutes = Math.abs(timezoneOffsetMinutes);
+  const offsetHours = String(Math.floor(absoluteOffsetMinutes / 60)).padStart(2, "0");
+  const offsetMinutes = String(absoluteOffsetMinutes % 60).padStart(2, "0");
 
-  const segments = [];
-  const stepSize = Math.max(3, Math.floor(coordinates.length / 28));
+  const year = futureDate.getFullYear();
+  const month = String(futureDate.getMonth() + 1).padStart(2, "0");
+  const day = String(futureDate.getDate()).padStart(2, "0");
+  const hour = String(futureDate.getHours()).padStart(2, "0");
+  const minute = String(futureDate.getMinutes()).padStart(2, "0");
+  const second = String(futureDate.getSeconds()).padStart(2, "0");
 
-  for (let index = 0; index < coordinates.length - 1; index += stepSize) {
-    const nextIndex = Math.min(index + stepSize, coordinates.length - 1);
-
-    segments.push({
-      id: `segment-${index}`,
-      coordinates: [coordinates[index], coordinates[nextIndex]]
-    });
-  }
-
-  return segments;
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}${offsetSign}${offsetHours}:${offsetMinutes}`;
 };
 
-const createCongestionLevels = (routeSegments) =>
-  routeSegments.map((segment) => ({
-    segmentId: segment.id,
-    level: getRandomCongestion()
-  }));
+const buildDateFromMinutesAhead = (minutesAhead) =>
+  new Date(Date.now() + minutesAhead * 60 * 1000);
 
-const buildTrafficSegments = (routeSegments, levels) =>
-  routeSegments.map((segment) => ({
-    ...segment,
-    congestion:
-      levels.find((level) => level.segmentId === segment.id)?.level || "low"
-  }));
+const calculateMinutesAhead = (futureTimeValue) => {
+  const futureDate = new Date(futureTimeValue);
 
-// Risk is tied to the number of red segments, with a small random drift so it
-// still feels like a prediction score rather than a fixed calculation.
-const calculateRiskScore = (levels) => {
-  if (levels.length === 0) {
+  if (Number.isNaN(futureDate.getTime())) {
     return 0;
   }
 
-  const redSegments = levels.filter((level) => level.level === "high").length;
-  const baseScore = (redSegments / levels.length) * 80;
-  const randomDrift = Math.floor(Math.random() * 20);
-
-  return Math.min(99, Math.round(baseScore + randomDrift));
+  return Math.max(0, Math.round((futureDate.getTime() - Date.now()) / 60000));
 };
 
-const decorateRoutes = (routes) =>
-  routes.map((route, index) => {
-    const segments = chunkRouteGeometry(route.geometry.coordinates);
-    const congestionLevels = createCongestionLevels(segments);
-
-    return {
-      id: `route-${index}`,
-      geometry: route.geometry.coordinates,
-      duration: route.duration,
-      distance: route.distance,
-      segments,
-      congestionLevels,
-      trafficSegments: buildTrafficSegments(segments, congestionLevels),
-      riskScore: calculateRiskScore(congestionLevels)
-    };
-  });
+const decorateRoutes = (apiRoutes) =>
+  apiRoutes.map((route) => ({
+    id: `route-${route.route_index}`,
+    routeIndex: route.route_index,
+    geometry: route.points,
+    duration: route.travel_time,
+    distance: route.distance,
+    confidence: route.confidence,
+    priority: route.priority,
+    color: route.color,
+    riskMessage:
+      route.priority === "high"
+        ? "Lowest delay risk based on the future-time prediction."
+        : route.priority === "medium"
+          ? "Moderate delay risk. Keep as a backup option."
+          : "Highest delay risk among the current route options."
+  }));
 
 function App() {
-  const [source, setSource] = useState("Shivajinagar, Pune");
-  const [destination, setDestination] = useState("Hinjawadi, Pune");
+  const [source, setSource] = useState("Swargate");
+  const [destination, setDestination] = useState("Hinjewadi");
   const [sourceCoords, setSourceCoords] = useState(null);
   const [destinationCoords, setDestinationCoords] = useState(null);
   const [routeData, setRouteData] = useState(null);
-  const [segments, setSegments] = useState([]);
-  const [congestionLevels, setCongestionLevels] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
-  const [sliderTime, setSliderTime] = useState(0);
+  const [sliderTime, setSliderTime] = useState(30);
+  const [futureTime, setFutureTime] = useState(() =>
+    buildLocalDateTimeValue(buildDateFromMinutesAhead(30))
+  );
+  const [predictionContext, setPredictionContext] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Recalculate congestion colors when the time slider changes.
-  useEffect(() => {
-    if (routes.length === 0) {
-      return;
-    }
-
-    setRoutes((currentRoutes) =>
-      currentRoutes.map((route) => {
-        const nextCongestionLevels = createCongestionLevels(route.segments);
-
-        return {
-          ...route,
-          congestionLevels: nextCongestionLevels,
-          trafficSegments: buildTrafficSegments(route.segments, nextCongestionLevels),
-          riskScore: calculateRiskScore(nextCongestionLevels)
-        };
-      })
-    );
-  }, [sliderTime]);
-
-  // Keep the selected route's derived route state synchronized.
   useEffect(() => {
     const selectedRoute =
       routes.find((route) => route.id === selectedRouteId) || null;
-
     setRouteData(selectedRoute);
-    setSegments(selectedRoute?.segments || []);
-    setCongestionLevels(selectedRoute?.congestionLevels || []);
   }, [routes, selectedRouteId]);
-
-  const geocodePlace = async (place) => {
-    const response = await axios.get(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
-        place
-      )}.json`,
-      {
-        params: {
-          access_token: MAPBOX_TOKEN,
-          limit: 1,
-          autocomplete: true,
-          country: "IN",
-          proximity: `${PUNE_CENTER[0]},${PUNE_CENTER[1]}`
-        }
-      }
-    );
-
-    const feature = response.data.features?.[0];
-
-    if (!feature) {
-      throw new Error(`No coordinates found for "${place}".`);
-    }
-
-    return feature.center;
-  };
 
   const handleGetRoute = async () => {
     if (!source.trim() || !destination.trim()) {
@@ -158,57 +100,52 @@ function App() {
     setError("");
 
     try {
-      // Geocode both user-entered places and store their coordinates in state.
-      const [resolvedSourceCoords, resolvedDestinationCoords] = await Promise.all([
-        geocodePlace(source),
-        geocodePlace(destination)
-      ]);
+      if (!futureTime) {
+        throw new Error("Please choose a future prediction time.");
+      }
 
-      setSourceCoords(resolvedSourceCoords);
-      setDestinationCoords(resolvedDestinationCoords);
+      const futureDate = new Date(futureTime);
 
-      // Fetch route geometry, distance, and duration from the Directions API.
-      const directionsResponse = await axios.get(
-        `https://api.mapbox.com/directions/v5/mapbox/driving/${resolvedSourceCoords.join(
-          ","
-        )};${resolvedDestinationCoords.join(",")}`,
-        {
-          params: {
-            access_token: MAPBOX_TOKEN,
-            geometries: "geojson",
-            alternatives: true,
-            overview: "full",
-            steps: false
-          }
-        }
-      );
+      if (Number.isNaN(futureDate.getTime())) {
+        throw new Error("Please enter a valid prediction time.");
+      }
 
-      const mappedRoutes = decorateRoutes(directionsResponse.data.routes || []);
+      const response = await axios.post(`${API_BASE_URL}/predict-route`, {
+        origin: source.trim(),
+        destination: destination.trim(),
+        future_time: buildFutureTimeIso(futureDate)
+      });
+
+      const mappedRoutes = decorateRoutes(response.data.routes || []);
 
       if (mappedRoutes.length === 0) {
         throw new Error("No routes were returned for this trip.");
       }
 
-      const nextRoutes = mappedRoutes.slice(0, 3);
-      const primaryRoute = nextRoutes[0];
+      const recommendedRoute =
+        mappedRoutes.find(
+          (route) => route.routeIndex === response.data.best_route_index
+        ) || mappedRoutes[0];
 
-      setRoutes(nextRoutes);
-      setSelectedRouteId(primaryRoute.id);
-      setRouteData(primaryRoute);
-      setSegments(primaryRoute.segments);
-      setCongestionLevels(primaryRoute.congestionLevels);
+      setRoutes(mappedRoutes);
+      setPredictionContext(response.data.prediction_context || null);
+      setSelectedRouteId(recommendedRoute.id);
+      setRouteData(recommendedRoute);
+      setSourceCoords(recommendedRoute.geometry[0] || null);
+      setDestinationCoords(
+        recommendedRoute.geometry[recommendedRoute.geometry.length - 1] || null
+      );
     } catch (requestError) {
       setSourceCoords(null);
       setDestinationCoords(null);
       setRouteData(null);
-      setSegments([]);
-      setCongestionLevels([]);
       setRoutes([]);
+      setPredictionContext(null);
       setSelectedRouteId(null);
       setError(
-        requestError.response?.data?.message ||
+        requestError.response?.data?.detail ||
           requestError.message ||
-          "Unable to fetch route."
+          "Unable to fetch route prediction."
       );
     } finally {
       setLoading(false);
@@ -222,6 +159,16 @@ function App() {
     setDestination(source);
   };
 
+  const handleSliderTimeChange = (minutesAhead) => {
+    setSliderTime(minutesAhead);
+    setFutureTime(buildLocalDateTimeValue(buildDateFromMinutesAhead(minutesAhead)));
+  };
+
+  const handleFutureTimeChange = (value) => {
+    setFutureTime(value);
+    setSliderTime(calculateMinutesAhead(value));
+  };
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -229,8 +176,8 @@ function App() {
           <p className="eyebrow">Pune Urban Mobility Command Surface</p>
           <h1 className="page-title">LogiTwin Pune</h1>
           <p className="page-subtitle">
-            Explore route alternatives, simulate congestion shifts, and compare
-            trip risk across the city.
+            Predict the best live route for a future dispatch window and compare
+            all alternatives side by side.
           </p>
         </div>
 
@@ -244,8 +191,8 @@ function App() {
             <strong>Road Logistics</strong>
           </div>
           <div className="header-badge status-badge">
-            <span>Map Status</span>
-            <strong>{isTokenMissing ? "Token pending" : "Live ready"}</strong>
+            <span>Backend</span>
+            <strong>{loading ? "Predicting" : "API ready"}</strong>
           </div>
         </div>
       </header>
@@ -259,6 +206,8 @@ function App() {
             setDestination={setDestination}
             onGetRoute={handleGetRoute}
             onSwapLocations={handleSwapLocations}
+            futureTime={futureTime}
+            onFutureTimeChange={handleFutureTimeChange}
             loading={loading}
             error={error}
           />
@@ -268,8 +217,6 @@ function App() {
             center={PUNE_CENTER}
             routes={routes}
             routeData={routeData}
-            segments={segments}
-            congestionLevels={congestionLevels}
             selectedRouteId={selectedRouteId}
             sourceCoords={sourceCoords}
             destinationCoords={destinationCoords}
@@ -280,23 +227,29 @@ function App() {
             <div className="slider-header">
               <div>
                 <span>Traffic Prediction Window</span>
-                <p>Move the slider to simulate near-future congestion changes.</p>
+                <p>
+                  Pick how far into the future the backend should score the
+                  current route options.
+                </p>
               </div>
               <strong>{sliderTime} mins</strong>
             </div>
             <input
               type="range"
               min="0"
-              max="90"
+              max="10080"
+              step="15"
               value={sliderTime}
-              onChange={(event) => setSliderTime(Number(event.target.value))}
+              onChange={(event) =>
+                handleSliderTimeChange(Number(event.target.value))
+              }
               className="time-slider"
             />
             <div className="slider-scale">
               <span>Now</span>
-              <span>30m</span>
-              <span>60m</span>
-              <span>90m</span>
+              <span>1 day</span>
+              <span>3 days</span>
+              <span>7 days</span>
             </div>
           </div>
         </div>
@@ -306,6 +259,8 @@ function App() {
           routes={routes}
           onSelectRoute={setSelectedRouteId}
           sliderTime={sliderTime}
+          futureTime={futureTime}
+          predictionContext={predictionContext}
         />
       </div>
     </div>

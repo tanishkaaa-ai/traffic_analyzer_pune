@@ -46,6 +46,12 @@ FEATURE_COLUMNS = [
     "delay_ratio",
 ]
 
+PRIORITY_STYLES = [
+    ("high", "green"),
+    ("medium", "orange"),
+    ("low", "red"),
+]
+
 
 def load_env_file(env_path: Path = ENV_PATH) -> None:
     """Load simple KEY=VALUE pairs from backend/.env into the process environment."""
@@ -174,6 +180,53 @@ def extract_route_features(
     return feature_frame, route_summaries
 
 
+def extract_route_points(route: dict[str, Any]) -> list[list[float]]:
+    """Convert TomTom leg points into [lng, lat] coordinate pairs for the map."""
+    points = route.get("legs", [{}])[0].get("points", [])
+    return [[point["longitude"], point["latitude"]] for point in points]
+
+
+def rank_route_styles(confidence_scores: np.ndarray) -> dict[int, tuple[str, str]]:
+    """Assign priority and display color based on descending route confidence."""
+    ranked_indices = np.argsort(confidence_scores)[::-1]
+    style_map: dict[int, tuple[str, str]] = {}
+
+    for rank, route_index in enumerate(ranked_indices):
+        priority, color = PRIORITY_STYLES[min(rank, len(PRIORITY_STYLES) - 1)]
+        style_map[int(route_index)] = (priority, color)
+
+    return style_map
+
+
+def build_frontend_routes(
+    routes: list[dict[str, Any]],
+    confidence_scores: np.ndarray,
+) -> list[dict[str, Any]]:
+    """Shape TomTom routes into a frontend-friendly payload."""
+    style_map = rank_route_styles(confidence_scores)
+    frontend_routes: list[dict[str, Any]] = []
+
+    for route_index, route in enumerate(routes):
+        summary = route.get("summary", {})
+        priority, color = style_map[route_index]
+        points = extract_route_points(route)
+
+        frontend_routes.append(
+            {
+                "route_index": route_index,
+                "confidence": float(confidence_scores[route_index]),
+                "priority": priority,
+                "color": color,
+                "travel_time": float(summary.get("travelTimeInSeconds", 0)),
+                "distance": float(summary.get("lengthInMeters", 0)),
+                "traffic_delay": float(summary.get("trafficDelayInSeconds", 0)),
+                "points": points,
+            }
+        )
+
+    return frontend_routes
+
+
 def predict_best_route(
     origin: str,
     destination: str,
@@ -211,13 +264,20 @@ def predict_best_route(
     probabilities = model.predict_proba(feature_frame)
     confidence_scores = probabilities[:, 1]
     best_index = int(np.argmax(confidence_scores))
+    frontend_routes = build_frontend_routes(routes, confidence_scores)
 
     return {
         "origin": origin,
         "destination": destination,
         "future_time": future_dt.isoformat(),
+        "prediction_context": {
+            "future_time": future_dt.isoformat(),
+            "future_hour": future_hour,
+            "future_day": future_day,
+        },
         "best_route_index": best_index,
         "confidence_scores": confidence_scores.tolist(),
+        "frontend_routes": frontend_routes,
         "routes": routes,
         "route_features": route_summaries,
     }

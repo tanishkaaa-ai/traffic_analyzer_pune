@@ -6,9 +6,9 @@ import time
 # =========================
 # CONFIG (CHANGE PER LAPTOP)
 # =========================
-API_KEY = "F84s3vHQ2SOBBU6tuD575oMZtE0c5PHx"
+API_KEY = " "
 
-MY_ORIGIN = "Kothrud"   # 👈 CHANGE per laptop
+MY_ORIGIN = "Swargate"   # 👈 CHANGE per laptop
 
 # =========================
 # LOCATIONS

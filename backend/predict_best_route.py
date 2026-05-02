@@ -14,6 +14,7 @@ import requests
 
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "route_model.pkl"
+ENV_PATH = BASE_DIR / ".env"
 TOMTOM_ROUTING_URL = "https://api.tomtom.com/routing/1/calculateRoute/{start}:{end}/json"
 
 place_mapping = {
@@ -44,6 +45,20 @@ FEATURE_COLUMNS = [
     "avg_speed",
     "delay_ratio",
 ]
+
+
+def load_env_file(env_path: Path = ENV_PATH) -> None:
+    """Load simple KEY=VALUE pairs from backend/.env into the process environment."""
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip("'").strip('"'))
 
 
 def load_model(model_path: Path = MODEL_PATH) -> Any:
@@ -169,6 +184,7 @@ def predict_best_route(
     Use current TomTom route alternatives and future-time model features
     to predict which current route is most likely to be the best.
     """
+    load_env_file()
     validate_places(origin, destination)
 
     resolved_api_key = api_key or os.getenv("TOMTOM_API_KEY")

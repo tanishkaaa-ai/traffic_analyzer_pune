@@ -9,6 +9,13 @@ const MAPBOX_TOKEN =
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || "http://127.0.0.1:8000";
 const PUNE_CENTER = [73.8567, 18.5204];
+const LOCATION_OPTIONS = [
+  "Hadapsar",
+  "Hinjewadi",
+  "Kothrud",
+  "Swargate",
+  "University"
+];
 
 const buildLocalDateTimeValue = (date) => {
   const year = date.getFullYear();
@@ -202,6 +209,7 @@ function App() {
           <InputPanel
             source={source}
             destination={destination}
+            locationOptions={LOCATION_OPTIONS}
             setSource={setSource}
             setDestination={setDestination}
             onGetRoute={handleGetRoute}

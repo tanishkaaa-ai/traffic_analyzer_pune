@@ -30,7 +30,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -193,13 +194,19 @@ input {
   letter-spacing: 0.08em;
 }
 
-.input-grid input {
+.input-grid input,
+.input-grid select {
   width: 100%;
   border: none;
   border-radius: 12px;
   padding: 8px 6px 4px;
   background: transparent;
   outline: none;
+}
+
+.input-grid select {
+  cursor: pointer;
+  color: var(--text);
 }
 
 .swap-button,

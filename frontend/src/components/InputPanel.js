@@ -3,6 +3,7 @@ import React from "react";
 function InputPanel({
   source,
   destination,
+  locationOptions,
   setSource,
   setDestination,
   onGetRoute,
@@ -47,21 +48,29 @@ function InputPanel({
       <div className="input-grid">
         <label className="input-card">
           <span>Source</span>
-          <input
-            type="text"
-            placeholder="Source location"
+          <select
             value={source}
             onChange={(event) => setSource(event.target.value)}
-          />
+          >
+            {locationOptions.map((location) => (
+              <option key={location} value={location}>
+                {location}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="input-card">
           <span>Destination</span>
-          <input
-            type="text"
-            placeholder="Destination location"
+          <select
             value={destination}
             onChange={(event) => setDestination(event.target.value)}
-          />
+          >
+            {locationOptions.map((location) => (
+              <option key={location} value={location}>
+                {location}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="input-card">
           <span>Future Time</span>

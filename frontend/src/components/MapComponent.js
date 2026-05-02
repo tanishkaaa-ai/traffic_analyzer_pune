@@ -12,7 +12,12 @@ function MapComponent({
   mapboxToken,
   center,
   routes,
+  routeData,
+  segments,
+  congestionLevels,
   selectedRouteId,
+  sourceCoords,
+  destinationCoords,
   isTokenMissing
 }) {
   const mapContainerRef = useRef(null);
@@ -20,6 +25,29 @@ function MapComponent({
   const markersRef = useRef([]);
   const vehicleMarkerRef = useRef(null);
   const animationFrameRef = useRef(null);
+
+  const isMapStyleReady = (mapInstance) =>
+    Boolean(mapInstance && !mapInstance._removed && mapInstance.getStyle());
+
+  const removeLayerIfPresent = (mapInstance, layerId) => {
+    if (!isMapStyleReady(mapInstance)) {
+      return;
+    }
+
+    if (mapInstance.getLayer(layerId)) {
+      mapInstance.removeLayer(layerId);
+    }
+  };
+
+  const removeSourceIfPresent = (mapInstance, sourceId) => {
+    if (!isMapStyleReady(mapInstance)) {
+      return;
+    }
+
+    if (mapInstance.getSource(sourceId)) {
+      mapInstance.removeSource(sourceId);
+    }
+  };
 
   const stopVehicleAnimation = () => {
     if (animationFrameRef.current) {
@@ -69,32 +97,25 @@ function MapComponent({
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current = [];
 
+      // Draw non-selected routes as lighter comparison lines.
       routes.forEach((route, routeIndex) => {
         const routeSourceId = `${route.id}-source`;
         const baseLayerId = `${route.id}-base-line`;
-        const trafficSourceId = `${route.id}-traffic-source`;
-        const trafficLayerId = `${route.id}-traffic-line`;
         const selected = route.id === selectedRouteId;
 
-        const routeGeoJson = {
-          type: "Feature",
-          geometry: {
-            type: "LineString",
-            coordinates: route.geometry
-          },
-          properties: {}
-        };
-
-        if (map.getLayer(baseLayerId)) {
-          map.removeLayer(baseLayerId);
-        }
-        if (map.getSource(routeSourceId)) {
-          map.removeSource(routeSourceId);
-        }
+        removeLayerIfPresent(map, baseLayerId);
+        removeSourceIfPresent(map, routeSourceId);
 
         map.addSource(routeSourceId, {
           type: "geojson",
-          data: routeGeoJson
+          data: {
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: route.geometry
+            },
+            properties: {}
+          }
         });
 
         map.addLayer({
@@ -107,30 +128,65 @@ function MapComponent({
           },
           paint: {
             "line-color": selected ? "#0f172a" : routeIndex === 1 ? "#64748b" : "#94a3b8",
-            "line-width": selected ? 8 : 5,
-            "line-opacity": selected ? 0.85 : 0.45
+            "line-width": selected ? 3 : 5,
+            "line-opacity": selected ? 0.18 : 0.45
+          }
+        });
+      });
+
+      // Remove the previous active route before drawing the newly selected one.
+      removeLayerIfPresent(map, "active-route-line");
+      removeSourceIfPresent(map, "active-route-source");
+      removeLayerIfPresent(map, "traffic-prediction-line");
+      removeSourceIfPresent(map, "traffic-prediction-source");
+
+      // Draw the selected route as a dedicated GeoJSON source + line layer.
+      if (routeData?.geometry?.length > 1) {
+        map.addSource("active-route-source", {
+          type: "geojson",
+          data: {
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: routeData.geometry
+            },
+            properties: {}
           }
         });
 
-        const trafficFeatures = route.trafficSegments.map((segment) => ({
-          type: "Feature",
-          properties: {
-            color: congestionColors[segment.congestion]
+        map.addLayer({
+          id: "active-route-line",
+          type: "line",
+          source: "active-route-source",
+          layout: {
+            "line-cap": "round",
+            "line-join": "round"
           },
-          geometry: {
-            type: "LineString",
-            coordinates: segment.coordinates
+          paint: {
+            "line-color": "#0f172a",
+            "line-width": 8,
+            "line-opacity": 0.35
           }
-        }));
+        });
+      }
 
-        if (map.getLayer(trafficLayerId)) {
-          map.removeLayer(trafficLayerId);
+      // Render each segment independently so prediction colors update smoothly.
+      const trafficFeatures = segments.map((segment) => ({
+        type: "Feature",
+        properties: {
+          color:
+            congestionColors[
+              congestionLevels.find((level) => level.segmentId === segment.id)?.level || "low"
+            ]
+        },
+        geometry: {
+          type: "LineString",
+          coordinates: segment.coordinates
         }
-        if (map.getSource(trafficSourceId)) {
-          map.removeSource(trafficSourceId);
-        }
+      }));
 
-        map.addSource(trafficSourceId, {
+      if (trafficFeatures.length > 0) {
+        map.addSource("traffic-prediction-source", {
           type: "geojson",
           data: {
             type: "FeatureCollection",
@@ -139,56 +195,53 @@ function MapComponent({
         });
 
         map.addLayer({
-          id: trafficLayerId,
+          id: "traffic-prediction-line",
           type: "line",
-          source: trafficSourceId,
+          source: "traffic-prediction-source",
           layout: {
             "line-cap": "round",
             "line-join": "round"
           },
           paint: {
             "line-color": ["get", "color"],
-            "line-width": selected ? 6 : 4,
-            "line-opacity": selected ? 1 : 0.85
+            "line-width": 6,
+            "line-opacity": 1
           }
         });
+      }
 
-        if (selected && route.geometry.length > 1) {
-          const startMarker = new mapboxgl.Marker({ color: "#10b981" })
-            .setLngLat(route.geometry[0])
-            .addTo(map);
-          const endMarker = new mapboxgl.Marker({ color: "#ef4444" })
-            .setLngLat(route.geometry[route.geometry.length - 1])
-            .addTo(map);
+      if (sourceCoords && destinationCoords) {
+        const startMarker = new mapboxgl.Marker({ color: "#10b981" })
+          .setLngLat(sourceCoords)
+          .addTo(map);
+        const endMarker = new mapboxgl.Marker({ color: "#ef4444" })
+          .setLngLat(destinationCoords)
+          .addTo(map);
 
-          markersRef.current.push(startMarker, endMarker);
-        }
-      });
+        markersRef.current.push(startMarker, endMarker);
+      }
 
-      if (routes.length > 0) {
+      if (routeData?.geometry?.length > 0) {
         const bounds = new mapboxgl.LngLatBounds();
-        routes.forEach((route) => {
-          route.geometry.forEach((coordinate) => bounds.extend(coordinate));
-        });
+        routeData.geometry.forEach((coordinate) => bounds.extend(coordinate));
         map.fitBounds(bounds, { padding: 70, duration: 800 });
       }
 
-      const selectedRoute = routes.find((route) => route.id === selectedRouteId);
-
-      if (selectedRoute?.geometry?.length > 1) {
+      if (routeData?.geometry?.length > 1) {
         const vehicleElement = document.createElement("div");
         vehicleElement.className = "vehicle-marker";
-        vehicleElement.innerHTML = '<div class="vehicle-marker__pulse"></div><div class="vehicle-marker__body">Truck</div>';
+        vehicleElement.innerHTML =
+          '<div class="vehicle-marker__pulse"></div><div class="vehicle-marker__body">Truck</div>';
 
         vehicleMarkerRef.current = new mapboxgl.Marker({
           element: vehicleElement,
           anchor: "center"
         })
-          .setLngLat(selectedRoute.geometry[0])
+          .setLngLat(routeData.geometry[0])
           .addTo(map);
 
         const animationDuration = 12000;
-        const stepCount = selectedRoute.geometry.length - 1;
+        const stepCount = routeData.geometry.length - 1;
         let animationStart = null;
 
         const animateVehicle = (timestamp) => {
@@ -206,9 +259,8 @@ function MapComponent({
           const startIndex = Math.floor(rawIndex);
           const endIndex = Math.min(startIndex + 1, stepCount);
           const segmentProgress = rawIndex - startIndex;
-
-          const startCoord = selectedRoute.geometry[startIndex];
-          const endCoord = selectedRoute.geometry[endIndex];
+          const startCoord = routeData.geometry[startIndex];
+          const endCoord = routeData.geometry[endIndex];
 
           const lng =
             startCoord[0] + (endCoord[0] - startCoord[0]) * segmentProgress;
@@ -233,31 +285,32 @@ function MapComponent({
       routes.forEach((route) => {
         const routeSourceId = `${route.id}-source`;
         const baseLayerId = `${route.id}-base-line`;
-        const trafficSourceId = `${route.id}-traffic-source`;
-        const trafficLayerId = `${route.id}-traffic-line`;
 
-        if (map.getLayer(trafficLayerId)) {
-          map.removeLayer(trafficLayerId);
-        }
-        if (map.getSource(trafficSourceId)) {
-          map.removeSource(trafficSourceId);
-        }
-        if (map.getLayer(baseLayerId)) {
-          map.removeLayer(baseLayerId);
-        }
-        if (map.getSource(routeSourceId)) {
-          map.removeSource(routeSourceId);
-        }
+        removeLayerIfPresent(map, baseLayerId);
+        removeSourceIfPresent(map, routeSourceId);
       });
+
+      removeLayerIfPresent(map, "traffic-prediction-line");
+      removeSourceIfPresent(map, "traffic-prediction-source");
+      removeLayerIfPresent(map, "active-route-line");
+      removeSourceIfPresent(map, "active-route-source");
 
       stopVehicleAnimation();
     };
-  }, [routes, selectedRouteId]);
+  }, [
+    routes,
+    routeData,
+    segments,
+    congestionLevels,
+    selectedRouteId,
+    sourceCoords,
+    destinationCoords
+  ]);
 
   return (
     <div className="map-card">
       <div className="map-toolbar">
-        <div>
+        <div className="map-brand">
           <span className="map-kicker">Live Map Surface</span>
           <strong>Pune Traffic Twin</strong>
         </div>

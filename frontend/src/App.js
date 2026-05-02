@@ -13,60 +13,115 @@ const getRandomCongestion = () => {
   return levels[Math.floor(Math.random() * levels.length)];
 };
 
+// Split the route geometry into smaller chunks so each segment can carry
+// its own prediction color and risk contribution.
 const chunkRouteGeometry = (coordinates) => {
   if (!coordinates || coordinates.length < 2) {
     return [];
   }
 
   const segments = [];
+  const stepSize = Math.max(3, Math.floor(coordinates.length / 28));
 
-  for (let index = 0; index < coordinates.length - 1; index += 1) {
+  for (let index = 0; index < coordinates.length - 1; index += stepSize) {
+    const nextIndex = Math.min(index + stepSize, coordinates.length - 1);
+
     segments.push({
       id: `segment-${index}`,
-      coordinates: [coordinates[index], coordinates[index + 1]],
-      congestion: getRandomCongestion()
+      coordinates: [coordinates[index], coordinates[nextIndex]]
     });
   }
 
   return segments;
 };
 
-const decorateRoutes = (routes) =>
-  routes.map((route, index) => ({
-    id: `route-${index}`,
-    geometry: route.geometry.coordinates,
-    duration: route.duration,
-    distance: route.distance,
-    riskScore: Math.floor(Math.random() * 41) + 55,
-    trafficSegments: chunkRouteGeometry(route.geometry.coordinates)
+const createCongestionLevels = (routeSegments) =>
+  routeSegments.map((segment) => ({
+    segmentId: segment.id,
+    level: getRandomCongestion()
   }));
+
+const buildTrafficSegments = (routeSegments, levels) =>
+  routeSegments.map((segment) => ({
+    ...segment,
+    congestion:
+      levels.find((level) => level.segmentId === segment.id)?.level || "low"
+  }));
+
+// Risk is tied to the number of red segments, with a small random drift so it
+// still feels like a prediction score rather than a fixed calculation.
+const calculateRiskScore = (levels) => {
+  if (levels.length === 0) {
+    return 0;
+  }
+
+  const redSegments = levels.filter((level) => level.level === "high").length;
+  const baseScore = (redSegments / levels.length) * 80;
+  const randomDrift = Math.floor(Math.random() * 20);
+
+  return Math.min(99, Math.round(baseScore + randomDrift));
+};
+
+const decorateRoutes = (routes) =>
+  routes.map((route, index) => {
+    const segments = chunkRouteGeometry(route.geometry.coordinates);
+    const congestionLevels = createCongestionLevels(segments);
+
+    return {
+      id: `route-${index}`,
+      geometry: route.geometry.coordinates,
+      duration: route.duration,
+      distance: route.distance,
+      segments,
+      congestionLevels,
+      trafficSegments: buildTrafficSegments(segments, congestionLevels),
+      riskScore: calculateRiskScore(congestionLevels)
+    };
+  });
 
 function App() {
   const [source, setSource] = useState("Shivajinagar, Pune");
   const [destination, setDestination] = useState("Hinjawadi, Pune");
+  const [sourceCoords, setSourceCoords] = useState(null);
+  const [destinationCoords, setDestinationCoords] = useState(null);
+  const [routeData, setRouteData] = useState(null);
+  const [segments, setSegments] = useState([]);
+  const [congestionLevels, setCongestionLevels] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
-  const [timeOffset, setTimeOffset] = useState(0);
+  const [sliderTime, setSliderTime] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Recalculate congestion colors when the time slider changes.
   useEffect(() => {
     if (routes.length === 0) {
       return;
     }
 
-    // Re-simulate route traffic whenever the slider changes.
     setRoutes((currentRoutes) =>
-      currentRoutes.map((route) => ({
-        ...route,
-        trafficSegments: route.trafficSegments.map((segment) => ({
-          ...segment,
-          congestion: getRandomCongestion()
-        })),
-        riskScore: Math.min(99, Math.floor(Math.random() * 41) + 55)
-      }))
+      currentRoutes.map((route) => {
+        const nextCongestionLevels = createCongestionLevels(route.segments);
+
+        return {
+          ...route,
+          congestionLevels: nextCongestionLevels,
+          trafficSegments: buildTrafficSegments(route.segments, nextCongestionLevels),
+          riskScore: calculateRiskScore(nextCongestionLevels)
+        };
+      })
     );
-  }, [timeOffset]);
+  }, [sliderTime]);
+
+  // Keep the selected route's derived route state synchronized.
+  useEffect(() => {
+    const selectedRoute =
+      routes.find((route) => route.id === selectedRouteId) || null;
+
+    setRouteData(selectedRoute);
+    setSegments(selectedRoute?.segments || []);
+    setCongestionLevels(selectedRoute?.congestionLevels || []);
+  }, [routes, selectedRouteId]);
 
   const geocodePlace = async (place) => {
     const response = await axios.get(
@@ -103,15 +158,20 @@ function App() {
     setError("");
 
     try {
-      const [sourceCoords, destinationCoords] = await Promise.all([
+      // Geocode both user-entered places and store their coordinates in state.
+      const [resolvedSourceCoords, resolvedDestinationCoords] = await Promise.all([
         geocodePlace(source),
         geocodePlace(destination)
       ]);
 
+      setSourceCoords(resolvedSourceCoords);
+      setDestinationCoords(resolvedDestinationCoords);
+
+      // Fetch route geometry, distance, and duration from the Directions API.
       const directionsResponse = await axios.get(
-        `https://api.mapbox.com/directions/v5/mapbox/driving/${sourceCoords.join(
+        `https://api.mapbox.com/directions/v5/mapbox/driving/${resolvedSourceCoords.join(
           ","
-        )};${destinationCoords.join(",")}`,
+        )};${resolvedDestinationCoords.join(",")}`,
         {
           params: {
             access_token: MAPBOX_TOKEN,
@@ -129,9 +189,20 @@ function App() {
         throw new Error("No routes were returned for this trip.");
       }
 
-      setRoutes(mappedRoutes.slice(0, 3));
-      setSelectedRouteId(mappedRoutes[0].id);
+      const nextRoutes = mappedRoutes.slice(0, 3);
+      const primaryRoute = nextRoutes[0];
+
+      setRoutes(nextRoutes);
+      setSelectedRouteId(primaryRoute.id);
+      setRouteData(primaryRoute);
+      setSegments(primaryRoute.segments);
+      setCongestionLevels(primaryRoute.congestionLevels);
     } catch (requestError) {
+      setSourceCoords(null);
+      setDestinationCoords(null);
+      setRouteData(null);
+      setSegments([]);
+      setCongestionLevels([]);
       setRoutes([]);
       setSelectedRouteId(null);
       setError(
@@ -144,8 +215,6 @@ function App() {
     }
   };
 
-  const selectedRoute =
-    routes.find((route) => route.id === selectedRouteId) || null;
   const isTokenMissing = MAPBOX_TOKEN === "YOUR_MAPBOX_TOKEN";
 
   const handleSwapLocations = () => {
@@ -198,7 +267,12 @@ function App() {
             mapboxToken={MAPBOX_TOKEN}
             center={PUNE_CENTER}
             routes={routes}
+            routeData={routeData}
+            segments={segments}
+            congestionLevels={congestionLevels}
             selectedRouteId={selectedRouteId}
+            sourceCoords={sourceCoords}
+            destinationCoords={destinationCoords}
             isTokenMissing={isTokenMissing}
           />
 
@@ -208,14 +282,14 @@ function App() {
                 <span>Traffic Prediction Window</span>
                 <p>Move the slider to simulate near-future congestion changes.</p>
               </div>
-              <strong>{timeOffset} mins</strong>
+              <strong>{sliderTime} mins</strong>
             </div>
             <input
               type="range"
               min="0"
               max="90"
-              value={timeOffset}
-              onChange={(event) => setTimeOffset(Number(event.target.value))}
+              value={sliderTime}
+              onChange={(event) => setSliderTime(Number(event.target.value))}
               className="time-slider"
             />
             <div className="slider-scale">
@@ -228,10 +302,10 @@ function App() {
         </div>
 
         <RoutePanel
-          selectedRoute={selectedRoute}
+          selectedRoute={routeData}
           routes={routes}
           onSelectRoute={setSelectedRouteId}
-          timeOffset={timeOffset}
+          sliderTime={sliderTime}
         />
       </div>
     </div>

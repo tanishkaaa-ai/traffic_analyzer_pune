@@ -2,16 +2,20 @@ import React from "react";
 
 const formatDuration = (seconds) => `${Math.round(seconds / 60)} mins`;
 const formatDistance = (meters) => `${(meters / 1000).toFixed(1)} km`;
+const getRouteTone = (index) =>
+  ["Primary", "Alternate", "Fallback"][index] || "Route";
 
-function RoutePanel({ selectedRoute, routes, onSelectRoute, timeOffset }) {
+function RoutePanel({ selectedRoute, routes, onSelectRoute, sliderTime }) {
   return (
     <aside className="route-panel">
       <h2>Route Intelligence</h2>
-      <p className="panel-subtitle">Live route preview and mock congestion insights.</p>
+      <p className="panel-subtitle">
+        Live route preview and mock congestion insights.
+      </p>
 
       <div className="insight-banner">
         <span>Prediction horizon</span>
-        <strong>{timeOffset} minutes ahead</strong>
+        <strong>{sliderTime} minutes ahead</strong>
       </div>
 
       {selectedRoute ? (
@@ -62,10 +66,18 @@ function RoutePanel({ selectedRoute, routes, onSelectRoute, timeOffset }) {
               <div className="route-copy">
                 <span>Route {index + 1}</span>
                 <small>
-                  {selectedRoute?.id === route.id ? "Selected corridor" : "Tap to compare"}
+                  {selectedRoute?.id === route.id
+                    ? "Selected corridor"
+                    : "Tap to compare"}
                 </small>
               </div>
-              <strong>{formatDuration(route.duration)} - {formatDistance(route.distance)}</strong>
+              <div className="route-meta">
+                <em>{getRouteTone(index)}</em>
+                <strong>
+                  {formatDuration(route.duration)} -{" "}
+                  {formatDistance(route.distance)}
+                </strong>
+              </div>
             </div>
           ))
         )}

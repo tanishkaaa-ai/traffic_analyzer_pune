@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import joblib
 import numpy as np
 import pandas as pd
 import requests
@@ -15,6 +14,7 @@ import requests
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "route_model.pkl"
 ENV_PATH = BASE_DIR / ".env"
+DATASET_PATH = BASE_DIR / "final_dataset.csv"
 TOMTOM_ROUTING_URL = "https://api.tomtom.com/routing/1/calculateRoute/{start}:{end}/json"
 
 place_mapping = {
@@ -46,6 +46,14 @@ FEATURE_COLUMNS = [
     "delay_ratio",
 ]
 
+ESTIMATE_COLUMNS = [
+    "travel_time",
+    "distance",
+    "traffic_delay",
+    "avg_speed",
+    "delay_ratio",
+]
+
 PRIORITY_STYLES = [
     ("high", "green"),
     ("medium", "orange"),
@@ -69,9 +77,18 @@ def load_env_file(env_path: Path = ENV_PATH) -> None:
 
 def load_model(model_path: Path = MODEL_PATH) -> Any:
     """Load the trained route ranking model from disk."""
+    import joblib
+
     if not model_path.exists():
         raise FileNotFoundError(f"Model file not found: {model_path}")
     return joblib.load(model_path)
+
+
+def load_historical_dataset(dataset_path: Path = DATASET_PATH) -> pd.DataFrame:
+    """Load the generated Pune route dataset used for future-time estimates."""
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"Dataset file not found: {dataset_path}")
+    return pd.read_csv(dataset_path)
 
 
 def parse_future_time(future_time: str | datetime) -> datetime:
@@ -100,6 +117,59 @@ def validate_places(origin: str, destination: str) -> None:
 def build_current_departure_time() -> str:
     """Use the current time for the routing API request, never the future model time."""
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def hour_distance(candidate_hour: int, target_hour: int) -> int:
+    """Return circular distance between two 24-hour clock values."""
+    raw_distance = abs(candidate_hour - target_hour)
+    return min(raw_distance, 24 - raw_distance)
+
+
+def get_future_route_estimates(
+    origin: str,
+    destination: str,
+    future_hour: int,
+    future_day: int,
+) -> dict[int, dict[str, float]]:
+    """
+    Pick the closest generated dataset row for each route at the selected future time.
+
+    The routing API provides geometry and currently available alternatives. This dataset
+    provides the future-time travel metrics that should change when the user changes day/time.
+    """
+    dataset = load_historical_dataset()
+    place_rows = dataset[
+        (dataset["origin"] == origin)
+        & (dataset["destination"] == destination)
+        & (dataset["day_of_week"] == future_day)
+    ]
+
+    if place_rows.empty:
+        place_rows = dataset[
+            (dataset["origin"] == origin) & (dataset["destination"] == destination)
+        ]
+
+    if place_rows.empty:
+        return {}
+
+    grouped = (
+        place_rows.groupby(["route_id", "hour"], as_index=False)[ESTIMATE_COLUMNS]
+        .mean()
+        .sort_values(["route_id", "hour"])
+    )
+
+    estimates: dict[int, dict[str, float]] = {}
+    for route_id, route_rows in grouped.groupby("route_id"):
+        route_rows = route_rows.copy()
+        route_rows["hour_distance"] = route_rows["hour"].apply(
+            lambda candidate_hour: hour_distance(int(candidate_hour), future_hour)
+        )
+        nearest_row = route_rows.sort_values("hour_distance").iloc[0]
+        estimates[int(route_id)] = {
+            column: float(nearest_row[column]) for column in ESTIMATE_COLUMNS
+        }
+
+    return estimates
 
 
 def fetch_current_routes(origin: str, destination: str, api_key: str) -> list[dict[str, Any]]:
@@ -135,12 +205,13 @@ def extract_route_features(
     destination_encoded: int,
     future_hour: int,
     future_day: int,
+    future_estimates: dict[int, dict[str, float]] | None = None,
 ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     """Convert TomTom route summaries into the exact feature layout used by training."""
     feature_rows: list[list[float | int]] = []
     route_summaries: list[dict[str, Any]] = []
 
-    for route in routes:
+    for route_index, route in enumerate(routes):
         summary = route.get("summary", {})
         travel_time = float(summary.get("travelTimeInSeconds", 0))
         distance = float(summary.get("lengthInMeters", 0))
@@ -151,6 +222,14 @@ def extract_route_features(
 
         avg_speed = (distance / 1000.0) / (travel_time / 3600.0)
         delay_ratio = traffic_delay / travel_time if travel_time else 0.0
+        estimate = (future_estimates or {}).get(route_index)
+
+        if estimate:
+            travel_time = estimate["travel_time"]
+            distance = estimate["distance"]
+            traffic_delay = estimate["traffic_delay"]
+            avg_speed = estimate["avg_speed"]
+            delay_ratio = estimate["delay_ratio"]
 
         feature_rows.append(
             [
@@ -201,6 +280,7 @@ def rank_route_styles(confidence_scores: np.ndarray) -> dict[int, tuple[str, str
 def build_frontend_routes(
     routes: list[dict[str, Any]],
     confidence_scores: np.ndarray,
+    future_estimates: dict[int, dict[str, float]] | None = None,
 ) -> list[dict[str, Any]]:
     """Shape TomTom routes into a frontend-friendly payload."""
     style_map = rank_route_styles(confidence_scores)
@@ -210,6 +290,9 @@ def build_frontend_routes(
         summary = route.get("summary", {})
         priority, color = style_map[route_index]
         points = extract_route_points(route)
+        estimate = (future_estimates or {}).get(route_index, {})
+        current_travel_time = float(summary.get("travelTimeInSeconds", 0))
+        current_distance = float(summary.get("lengthInMeters", 0))
 
         frontend_routes.append(
             {
@@ -217,9 +300,13 @@ def build_frontend_routes(
                 "confidence": float(confidence_scores[route_index]),
                 "priority": priority,
                 "color": color,
-                "travel_time": float(summary.get("travelTimeInSeconds", 0)),
-                "distance": float(summary.get("lengthInMeters", 0)),
-                "traffic_delay": float(summary.get("trafficDelayInSeconds", 0)),
+                "travel_time": float(estimate.get("travel_time", current_travel_time)),
+                "distance": float(estimate.get("distance", current_distance)),
+                "traffic_delay": float(
+                    estimate.get("traffic_delay", summary.get("trafficDelayInSeconds", 0))
+                ),
+                "current_travel_time": current_travel_time,
+                "current_distance": current_distance,
                 "points": points,
             }
         )
@@ -250,6 +337,12 @@ def predict_best_route(
 
     origin_encoded = place_mapping[origin]
     destination_encoded = place_mapping[destination]
+    future_estimates = get_future_route_estimates(
+        origin=origin,
+        destination=destination,
+        future_hour=future_hour,
+        future_day=future_day,
+    )
 
     routes = fetch_current_routes(origin, destination, resolved_api_key)
     model = load_model()
@@ -259,12 +352,13 @@ def predict_best_route(
         destination_encoded=destination_encoded,
         future_hour=future_hour,
         future_day=future_day,
+        future_estimates=future_estimates,
     )
 
     probabilities = model.predict_proba(feature_frame)
     confidence_scores = probabilities[:, 1]
     best_index = int(np.argmax(confidence_scores))
-    frontend_routes = build_frontend_routes(routes, confidence_scores)
+    frontend_routes = build_frontend_routes(routes, confidence_scores, future_estimates)
 
     return {
         "origin": origin,
@@ -274,6 +368,7 @@ def predict_best_route(
             "future_time": future_dt.isoformat(),
             "future_hour": future_hour,
             "future_day": future_day,
+            "uses_future_estimates": bool(future_estimates),
         },
         "best_route_index": best_index,
         "confidence_scores": confidence_scores.tolist(),

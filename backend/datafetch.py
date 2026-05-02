@@ -6,7 +6,7 @@ import time
 # =========================
 # CONFIG (CHANGE PER LAPTOP)
 # =========================
-API_KEY = ""
+API_KEY = "F84s3vHQ2SOBBU6tuD575oMZtE0c5PHx"
 
 MY_ORIGIN = "Kothrud"   # 👈 CHANGE per laptop
 
@@ -26,7 +26,7 @@ locations = {
 # =========================
 base_date = datetime(2026, 4, 1)
 
-hours = [0, 6, 8, 10, 12, 14, 16, 18, 20, 22]
+hours = [7,9,11,13,15,17,19,21,23]
 weeks = [0, 7, 14]
 
 # =========================

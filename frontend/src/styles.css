@@ -171,7 +171,7 @@ select {
 
 .input-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 96px 160px;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(280px, 0.9fr);
   gap: 12px;
   align-items: end;
 }
@@ -209,11 +209,29 @@ select {
   color: var(--text);
 }
 
+.date-time-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
+  gap: 8px;
+}
+
+.date-time-row input {
+  min-width: 0;
+}
+
 .swap-button,
 .input-grid button {
   border: 1px solid rgba(24, 33, 47, 0.14);
   border-radius: 14px;
   min-height: 58px;
+}
+
+.swap-button {
+  grid-column: 1;
+}
+
+.input-grid > button:not(.swap-button) {
+  grid-column: 2;
 }
 
 .input-grid button {

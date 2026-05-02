@@ -13,6 +13,17 @@ function InputPanel({
   loading,
   error
 }) {
+  const futureDate = futureTime ? futureTime.slice(0, 10) : "";
+  const futureClockTime = futureTime ? futureTime.slice(11, 16) : "";
+
+  const updateFutureDatePart = (dateValue) => {
+    onFutureTimeChange(`${dateValue}T${futureClockTime || "00:00"}`);
+  };
+
+  const updateFutureTimePart = (timeValue) => {
+    onFutureTimeChange(`${futureDate || new Date().toISOString().slice(0, 10)}T${timeValue}`);
+  };
+
   return (
     <div className="input-panel">
       <div className="input-panel-top">
@@ -74,11 +85,20 @@ function InputPanel({
         </label>
         <label className="input-card">
           <span>Future Time</span>
-          <input
-            type="datetime-local"
-            value={futureTime}
-            onChange={(event) => onFutureTimeChange(event.target.value)}
-          />
+          <div className="date-time-row">
+            <input
+              type="date"
+              value={futureDate}
+              onChange={(event) => updateFutureDatePart(event.target.value)}
+              aria-label="Future date"
+            />
+            <input
+              type="time"
+              value={futureClockTime}
+              onChange={(event) => updateFutureTimePart(event.target.value)}
+              aria-label="Future time"
+            />
+          </div>
         </label>
         <button
           type="button"

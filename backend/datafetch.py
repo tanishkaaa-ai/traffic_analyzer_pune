@@ -26,7 +26,7 @@ locations = {
 # =========================
 base_date = datetime(2026, 4, 1)
 
-hours = [7,9,11,13,15,17,19,21,23]
+hours = list(range(6, 24))
 weeks = [0, 7, 14]
 
 # =========================
@@ -52,8 +52,9 @@ for dest_name, dest_coords in locations.items():
     for week in weeks:
         for day in range(7):
             for hour in hours:
+                minute = 30
 
-                dt = base_date + timedelta(days=week + day, hours=hour)
+                dt = base_date + timedelta(days=week + day, hours=hour, minutes=30)
                 depart_time = dt.isoformat()
 
                 url = f"https://api.tomtom.com/routing/1/calculateRoute/{start}:{end}/json"
@@ -110,6 +111,7 @@ for dest_name, dest_coords in locations.items():
                             "origin": MY_ORIGIN,
                             "destination": dest_name,
                             "hour": hour,
+                            "minute": minute,
                             "day_of_week": day,
                             "route_id": r[0],
                             "travel_time": r[1],
@@ -120,7 +122,7 @@ for dest_name, dest_coords in locations.items():
                             "is_best_route": 1 if r[1] == best_time else 0
                         })
 
-                    print(f"Done: {dest_name} | Day {day} | Hour {hour}")
+                    print(f"Done: {dest_name} | Day {day} | Time {hour:02d}:{minute:02d}")
 
                     time.sleep(0.7)
 

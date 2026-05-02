@@ -1,7 +1,7 @@
 import pandas as pd
 
 # Load dataset
-df = pd.read_csv("final_dataset.csv")
+df = pd.read_csv("final_dataset11.csv")
 
 # Mapping (same everywhere)
 place_mapping = {
@@ -17,6 +17,6 @@ df["origin"] = df["origin"].map(place_mapping)
 df["destination"] = df["destination"].map(place_mapping)
 
 # Save updated dataset
-df.to_csv("final_dataset_encoded.csv", index=False)
+df.to_csv("final_dataset_encoded11.csv", index=False)
 
 print("Encoding done. Saved as final_dataset_encoded.csv")

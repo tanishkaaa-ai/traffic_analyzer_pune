@@ -27,6 +27,7 @@ locations = {
 base_date = datetime(2026, 4, 1)
 
 hours = list(range(6, 24))
+minute_slots = [0, 10, 20, 30, 40, 50]
 weeks = [0, 7, 14]
 
 # =========================
@@ -52,82 +53,81 @@ for dest_name, dest_coords in locations.items():
     for week in weeks:
         for day in range(7):
             for hour in hours:
-                minute = 30
+                for minute in minute_slots:
+                    dt = base_date + timedelta(days=week + day, hours=hour, minutes=minute)
+                    depart_time = dt.isoformat()
 
-                dt = base_date + timedelta(days=week + day, hours=hour, minutes=30)
-                depart_time = dt.isoformat()
+                    url = f"https://api.tomtom.com/routing/1/calculateRoute/{start}:{end}/json"
 
-                url = f"https://api.tomtom.com/routing/1/calculateRoute/{start}:{end}/json"
+                    params = {
+                        "key": API_KEY,
+                        "departAt": depart_time,
+                        "traffic": "true",
+                        "computeTravelTimeFor": "all",
+                        "maxAlternatives": 2,
+                        "travelMode": "car"
+                    }
 
-                params = {
-                    "key": API_KEY,
-                    "departAt": depart_time,
-                    "traffic": "true",
-                    "computeTravelTimeFor": "all",
-                    "maxAlternatives": 2,
-                    "travelMode": "car"
-                }
+                    try:
+                        response = requests.get(url, params=params)
 
-                try:
-                    response = requests.get(url, params=params)
+                        if response.status_code != 200:
+                            print("API Error:", response.status_code)
+                            continue
 
-                    if response.status_code != 200:
-                        print("API Error:", response.status_code)
-                        continue
+                        res = response.json()
+                        routes = res.get("routes", [])
 
-                    res = response.json()
-                    routes = res.get("routes", [])
+                        if not routes:
+                            continue
 
-                    if not routes:
-                        continue
+                        route_data = []
 
-                    route_data = []
+                        # =========================
+                        # EXTRACT FEATURES
+                        # =========================
+                        for i, route in enumerate(routes):
+                            summary = route["summary"]
 
-                    # =========================
-                    # EXTRACT FEATURES
-                    # =========================
-                    for i, route in enumerate(routes):
-                        summary = route["summary"]
+                            t = summary["travelTimeInSeconds"]
+                            d = summary["lengthInMeters"]
+                            delay = summary["trafficDelayInSeconds"]
 
-                        t = summary["travelTimeInSeconds"]
-                        d = summary["lengthInMeters"]
-                        delay = summary["trafficDelayInSeconds"]
+                            avg_speed = (d / 1000) / (t / 3600) if t else 0
+                            delay_ratio = delay / t if t else 0
 
-                        avg_speed = (d / 1000) / (t / 3600) if t else 0
-                        delay_ratio = delay / t if t else 0
+                            route_data.append((i, t, d, delay, avg_speed, delay_ratio))
 
-                        route_data.append((i, t, d, delay, avg_speed, delay_ratio))
+                        # =========================
+                        # FIND BEST ROUTE
+                        # =========================
+                        best_time = min(r[1] for r in route_data)
 
-                    # =========================
-                    # FIND BEST ROUTE
-                    # =========================
-                    best_time = min(r[1] for r in route_data)
+                        # =========================
+                        # STORE DATA
+                        # =========================
+                        for r in route_data:
+                            data.append({
+                                "origin": MY_ORIGIN,
+                                "destination": dest_name,
+                                "hour": hour,
+                                "minute": minute,
+                                "day_of_week": day,
+                                "route_id": r[0],
+                                "travel_time": r[1],
+                                "distance": r[2],
+                                "traffic_delay": r[3],
+                                "avg_speed": r[4],
+                                "delay_ratio": r[5],
+                                "is_best_route": 1 if r[1] == best_time else 0
+                            })
 
-                    # =========================
-                    # STORE DATA
-                    # =========================
-                    for r in route_data:
-                        data.append({
-                            "origin": MY_ORIGIN,
-                            "destination": dest_name,
-                            "hour": hour,
-                            "minute": minute,
-                            "day_of_week": day,
-                            "route_id": r[0],
-                            "travel_time": r[1],
-                            "distance": r[2],
-                            "traffic_delay": r[3],
-                            "avg_speed": r[4],
-                            "delay_ratio": r[5],
-                            "is_best_route": 1 if r[1] == best_time else 0
-                        })
+                        print(f"Done: {dest_name} | Day {day} | Time {hour:02d}:{minute:02d}")
 
-                    print(f"Done: {dest_name} | Day {day} | Time {hour:02d}:{minute:02d}")
+                        time.sleep(0.7)
 
-                    time.sleep(0.7)
-
-                except Exception as e:
-                    print("Error:", e)
+                    except Exception as e:
+                        print("Error:", e)
 
 # =========================
 # SAVE CSV

@@ -253,7 +253,7 @@ function App() {
               type="range"
               min="0"
               max="10080"
-              step="15"
+              step="10"
               value={sliderTime}
               onChange={(event) =>
                 handleSliderTimeChange(Number(event.target.value))

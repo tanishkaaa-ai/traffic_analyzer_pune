@@ -121,10 +121,55 @@ def build_current_departure_time() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
-def hour_distance(candidate_hour: int, target_hour: int) -> int:
-    """Return circular distance between two 24-hour clock values."""
-    raw_distance = abs(candidate_hour - target_hour)
-    return min(raw_distance, 24 - raw_distance)
+def interpolate_route_estimate(
+    route_rows: pd.DataFrame,
+    target_minute_of_day: int,
+) -> dict[str, float]:
+    """
+    Estimate route metrics at the requested minute by interpolating between
+    the surrounding sampled time points for the same route.
+
+    This avoids coarse snapping and fixes incorrect cross-hour matching such as
+    treating 18:58 as being closer to 18:40 than 19:00.
+    """
+    ordered_rows = route_rows.sort_values("minute_of_day").reset_index(drop=True)
+    minute_values = ordered_rows["minute_of_day"].astype(int)
+
+    exact_match = ordered_rows[minute_values == target_minute_of_day]
+    if not exact_match.empty:
+        row = exact_match.iloc[0]
+        return {column: float(row[column]) for column in ESTIMATE_COLUMNS}
+
+    insertion_index = int(minute_values.searchsorted(target_minute_of_day))
+
+    if insertion_index <= 0:
+        row = ordered_rows.iloc[0]
+        return {column: float(row[column]) for column in ESTIMATE_COLUMNS}
+
+    if insertion_index >= len(ordered_rows):
+        row = ordered_rows.iloc[-1]
+        return {column: float(row[column]) for column in ESTIMATE_COLUMNS}
+
+    previous_row = ordered_rows.iloc[insertion_index - 1]
+    next_row = ordered_rows.iloc[insertion_index]
+    previous_minute = int(previous_row["minute_of_day"])
+    next_minute = int(next_row["minute_of_day"])
+
+    if next_minute <= previous_minute:
+        row = previous_row
+        return {column: float(row[column]) for column in ESTIMATE_COLUMNS}
+
+    interpolation_ratio = (target_minute_of_day - previous_minute) / (
+        next_minute - previous_minute
+    )
+
+    interpolated: dict[str, float] = {}
+    for column in ESTIMATE_COLUMNS:
+        start_value = float(previous_row[column])
+        end_value = float(next_row[column])
+        interpolated[column] = start_value + (end_value - start_value) * interpolation_ratio
+
+    return interpolated
 
 
 def get_future_route_estimates(
@@ -161,25 +206,17 @@ def get_future_route_estimates(
         .mean()
         .sort_values(["route_id", "hour", "minute"])
     )
+    grouped["minute_of_day"] = (
+        grouped["hour"].astype(int) * 60 + grouped["minute"].astype(int)
+    )
 
     estimates: dict[int, dict[str, float]] = {}
+    target_minute_of_day = future_hour * 60 + future_minute
     for route_id, route_rows in grouped.groupby("route_id"):
-        route_rows = route_rows.copy()
-        route_rows["hour_distance"] = route_rows["hour"].apply(
-            lambda candidate_hour: hour_distance(int(candidate_hour), future_hour)
+        estimates[int(route_id)] = interpolate_route_estimate(
+            route_rows=route_rows,
+            target_minute_of_day=target_minute_of_day,
         )
-        route_rows["minute_distance"] = route_rows["minute"].apply(
-            lambda candidate_minute: abs(int(candidate_minute) - future_minute)
-        )
-        route_rows["time_distance"] = (
-            route_rows["hour_distance"] * 60 + route_rows["minute_distance"]
-        )
-        nearest_row = route_rows.sort_values(
-            ["time_distance", "hour_distance", "minute_distance"]
-        ).iloc[0]
-        estimates[int(route_id)] = {
-            column: float(nearest_row[column]) for column in ESTIMATE_COLUMNS
-        }
 
     return estimates
 

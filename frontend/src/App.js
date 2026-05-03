@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import InputPanel from "./components/InputPanel";
 import MapComponent from "./components/MapComponent";
-import RoutePanel from "./components/RoutePanel";
+import RouteComparisonPanel from "./components/RouteComparisonPanel";
 import {
   formatMinutesAhead,
   formatSelectedTime
@@ -62,22 +62,28 @@ const calculateMinutesAhead = (futureTimeValue) => {
 };
 
 const decorateRoutes = (apiRoutes) =>
-  apiRoutes.map((route) => ({
-    id: `route-${route.route_index}`,
-    routeIndex: route.route_index,
-    geometry: route.points,
-    duration: route.travel_time,
-    distance: route.distance,
-    confidence: route.confidence,
-    priority: route.priority,
-    color: route.color,
-    riskMessage:
-      route.priority === "high"
-        ? "Lowest delay risk based on the future-time prediction."
-        : route.priority === "medium"
-          ? "Moderate delay risk. Keep as a backup option."
-          : "Highest delay risk among the current route options."
-  }));
+  apiRoutes.map((route) => {
+    const durationSeconds = Number(route.travel_time ?? 0);
+    const distanceMeters = Number(route.distance ?? 0);
+    const confidenceRaw = Number(route.confidence ?? 0);
+
+    return {
+      id: `route-${route.route_index}`,
+      routeIndex: route.route_index,
+      geometry: route.points,
+      duration: Math.round(durationSeconds / 60),
+      distance: Number((distanceMeters / 1000).toFixed(1)),
+      confidence: Number((confidenceRaw * 100).toFixed(0)),
+      priority: route.priority,
+      color: route.color,
+      riskMessage:
+        route.priority === "high"
+          ? "Lowest delay risk based on the future-time prediction."
+          : route.priority === "medium"
+            ? "Moderate delay risk. Keep as a backup option."
+            : "Highest delay risk among the current route options."
+    };
+  });
 
 function App() {
   const [source, setSource] = useState("Swargate");
@@ -253,7 +259,7 @@ function App() {
               type="range"
               min="0"
               max="10080"
-              step="15"
+              step="10"
               value={sliderTime}
               onChange={(event) =>
                 handleSliderTimeChange(Number(event.target.value))
@@ -269,13 +275,10 @@ function App() {
           </div>
         </div>
 
-        <RoutePanel
-          selectedRoute={routeData}
+        <RouteComparisonPanel
           routes={routes}
+          selectedRouteId={selectedRouteId}
           onSelectRoute={setSelectedRouteId}
-          sliderTime={sliderTime}
-          futureTime={futureTime}
-          predictionContext={predictionContext}
         />
       </div>
     </div>

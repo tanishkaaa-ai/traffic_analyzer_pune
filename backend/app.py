@@ -7,9 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 try:
-    from .predict_best_route import predict_best_route
+    from .wait_recommendation import predict_best_route_with_wait_recommendation
 except ImportError:
-    from predict_best_route import predict_best_route
+    from wait_recommendation import predict_best_route_with_wait_recommendation
 
 
 class PredictRouteRequest(BaseModel):
@@ -37,7 +37,7 @@ def health_check() -> dict[str, str]:
 @app.post("/predict-route")
 def predict_route(payload: PredictRouteRequest) -> dict[str, Any]:
     try:
-        prediction = predict_best_route(
+        prediction = predict_best_route_with_wait_recommendation(
             origin=payload.origin,
             destination=payload.destination,
             future_time=payload.future_time,
@@ -49,4 +49,5 @@ def predict_route(payload: PredictRouteRequest) -> dict[str, Any]:
         "prediction_context": prediction["prediction_context"],
         "best_route_index": prediction["best_route_index"],
         "routes": prediction["frontend_routes"],
+        "wait_recommendation": prediction["wait_recommendation"],
     }

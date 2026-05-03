@@ -44,6 +44,7 @@ FEATURE_COLUMNS = [
     "traffic_delay",
     "avg_speed",
     "delay_ratio",
+    "minute",
 ]
 
 ESTIMATE_COLUMNS = [
@@ -130,6 +131,7 @@ def get_future_route_estimates(
     destination: str,
     future_hour: int,
     future_day: int,
+    future_minute: int,
 ) -> dict[int, dict[str, float]]:
     """
     Pick the closest generated dataset row for each route at the selected future time.
@@ -153,9 +155,9 @@ def get_future_route_estimates(
         return {}
 
     grouped = (
-        place_rows.groupby(["route_id", "hour"], as_index=False)[ESTIMATE_COLUMNS]
+        place_rows.groupby(["route_id", "hour", "minute"], as_index=False)[ESTIMATE_COLUMNS]
         .mean()
-        .sort_values(["route_id", "hour"])
+        .sort_values(["route_id", "hour", "minute"])
     )
 
     estimates: dict[int, dict[str, float]] = {}
@@ -164,7 +166,15 @@ def get_future_route_estimates(
         route_rows["hour_distance"] = route_rows["hour"].apply(
             lambda candidate_hour: hour_distance(int(candidate_hour), future_hour)
         )
-        nearest_row = route_rows.sort_values("hour_distance").iloc[0]
+        route_rows["minute_distance"] = route_rows["minute"].apply(
+            lambda candidate_minute: abs(int(candidate_minute) - future_minute)
+        )
+        route_rows["time_distance"] = (
+            route_rows["hour_distance"] * 60 + route_rows["minute_distance"]
+        )
+        nearest_row = route_rows.sort_values(
+            ["time_distance", "hour_distance", "minute_distance"]
+        ).iloc[0]
         estimates[int(route_id)] = {
             column: float(nearest_row[column]) for column in ESTIMATE_COLUMNS
         }
@@ -204,6 +214,7 @@ def extract_route_features(
     origin_encoded: int,
     destination_encoded: int,
     future_hour: int,
+    future_minute: int,
     future_day: int,
     future_estimates: dict[int, dict[str, float]] | None = None,
 ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
@@ -236,6 +247,7 @@ def extract_route_features(
                 origin_encoded,
                 destination_encoded,
                 future_hour,
+                future_minute,
                 future_day,
                 travel_time,
                 distance,
@@ -333,6 +345,7 @@ def predict_best_route(
 
     future_dt = parse_future_time(future_time)
     future_hour = future_dt.hour
+    future_minute = future_dt.minute
     future_day = future_dt.weekday()
 
     origin_encoded = place_mapping[origin]
@@ -342,6 +355,7 @@ def predict_best_route(
         destination=destination,
         future_hour=future_hour,
         future_day=future_day,
+        future_minute=future_minute,
     )
 
     routes = fetch_current_routes(origin, destination, resolved_api_key)
@@ -351,6 +365,7 @@ def predict_best_route(
         origin_encoded=origin_encoded,
         destination_encoded=destination_encoded,
         future_hour=future_hour,
+        future_minute=future_minute,
         future_day=future_day,
         future_estimates=future_estimates,
     )

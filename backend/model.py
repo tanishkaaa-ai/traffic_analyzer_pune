@@ -7,7 +7,7 @@ import joblib
 # =========================
 # 1. LOAD DATA
 # =========================
-df = pd.read_csv("final_dataset_encoded.csv")
+df = pd.read_csv("final_dataset.csv")
 
 # =========================
 # 2. BASIC CHECKS

@@ -84,7 +84,7 @@ select:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 290px;
   gap: 20px;
-  align-items: start;
+  align-items: center;
 }
 
 .hero-copy-main {

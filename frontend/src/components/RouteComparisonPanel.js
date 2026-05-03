@@ -63,6 +63,8 @@ function RouteComparisonPanel({
     return "decision-trend-badge--stable";
   })();
 
+  const bestRoute = sortedRoutes[0] || null;
+
   return (
     <aside className="route-comparison-panel">
       <div className="route-comparison-header">
@@ -74,6 +76,27 @@ function RouteComparisonPanel({
           <span>{routes.length} route{routes.length === 1 ? "" : "s"}</span>
         </div>
       </div>
+
+      {bestRoute ? (
+        <div className="comparison-highlight-card">
+          <span className="comparison-highlight-card__eyebrow">Fastest visible option</span>
+          <strong>{`${bestRoute.duration} min across ${Number(
+            bestRoute.distance ?? 0
+          ).toFixed(1)} km`}</strong>
+          <p>
+            Select any route to inspect it on the map. Recommended options stay
+            highlighted so the decision is easier to scan.
+          </p>
+        </div>
+      ) : (
+        <div className="comparison-empty-card">
+          <strong>No route comparison yet</strong>
+          <p>
+            Run a prediction to compare route time, confidence, and delay risk
+            side by side.
+          </p>
+        </div>
+      )}
 
       <div className="route-comparison-list">
         {sortedRoutes.map((route, index) => {
@@ -155,6 +178,11 @@ function RouteComparisonPanel({
                 </p>
               )}
               <small>{waitRecommendation.message}</small>
+              {waitRecommendation.insight ? (
+                <p className="decision-card__insight-inline">
+                  {waitRecommendation.insight}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -189,13 +217,6 @@ function RouteComparisonPanel({
                 );
               })}
             </div>
-          </div>
-
-          <div className="decision-card">
-            <div className="decision-card__header">
-              <span className="decision-card__eyebrow">Smart Insight</span>
-            </div>
-            <p className="decision-card__insight">{waitRecommendation.insight}</p>
           </div>
         </div>
       ) : null}

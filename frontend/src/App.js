@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import axios from "axios";
 import InputPanel from "./components/InputPanel";
 import MapComponent from "./components/MapComponent";
@@ -90,7 +90,6 @@ function App() {
   const [destination, setDestination] = useState("Hinjewadi");
   const [sourceCoords, setSourceCoords] = useState(null);
   const [destinationCoords, setDestinationCoords] = useState(null);
-  const [routeData, setRouteData] = useState(null);
   const [routes, setRoutes] = useState([]);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
   const [sliderTime, setSliderTime] = useState(30);
@@ -102,12 +101,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    const selectedRoute =
-      routes.find((route) => route.id === selectedRouteId) || null;
-    setRouteData(selectedRoute);
-  }, [routes, selectedRouteId]);
-
+  const selectedRoute =
+    routes.find((route) => route.id === selectedRouteId) || null;
   const handleGetRoute = async () => {
     if (!source.trim() || !destination.trim()) {
       setError("Please enter both source and destination.");
@@ -149,7 +144,6 @@ function App() {
       setPredictionContext(response.data.prediction_context || null);
       setWaitRecommendation(response.data.wait_recommendation || null);
       setSelectedRouteId(recommendedRoute.id);
-      setRouteData(recommendedRoute);
       setSourceCoords(recommendedRoute.geometry[0] || null);
       setDestinationCoords(
         recommendedRoute.geometry[recommendedRoute.geometry.length - 1] || null
@@ -157,7 +151,6 @@ function App() {
     } catch (requestError) {
       setSourceCoords(null);
       setDestinationCoords(null);
-      setRouteData(null);
       setRoutes([]);
       setPredictionContext(null);
       setWaitRecommendation(null);
@@ -192,33 +185,33 @@ function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div>
-          <p className="eyebrow">Pune Urban Mobility Command Surface</p>
-          <h1 className="page-title">LogiTwin Pune</h1>
-          <p className="page-subtitle">
-            Predict the best live route for a future dispatch window and compare
-            all alternatives side by side.
-          </p>
-        </div>
+        <div className="hero-copy">
+          <div className="hero-top-row">
+            <div className="hero-copy-main">
+              <p className="eyebrow">Pune Urban Mobility Command Surface</p>
+              <h1 className="page-title">LogiTwin Pune</h1>
+              <p className="page-subtitle">
+                Predict the best live route for a future dispatch window and compare
+                all alternatives side by side.
+              </p>
+            </div>
 
-        <div className="header-badges">
-          <div className="header-badge">
-            <span>City Focus</span>
-            <strong>Pune, India</strong>
-          </div>
-          <div className="header-badge">
-            <span>Mode</span>
-            <strong>Road Logistics</strong>
-          </div>
-          <div className="header-badge status-badge">
-            <span>Prediction API</span>
-            <strong>{loading ? "Predicting" : "API ready"}</strong>
+            <div className="header-badges">
+              <div className="header-badge">
+                <span>City Focus</span>
+                <strong>Pune, India</strong>
+              </div>
+              <div className="header-badge status-badge">
+                <span>Prediction API</span>
+                <strong>{loading ? "Predicting" : "API ready"}</strong>
+              </div>
+            </div>
           </div>
         </div>
       </header>
 
       <div className="main-layout">
-        <div className="map-column">
+        <section className="dashboard-primary">
           <InputPanel
             source={source}
             destination={destination}
@@ -237,11 +230,14 @@ function App() {
             mapboxToken={MAPBOX_TOKEN}
             center={PUNE_CENTER}
             routes={routes}
-            routeData={routeData}
+            routeData={selectedRoute}
             selectedRouteId={selectedRouteId}
             sourceCoords={sourceCoords}
             destinationCoords={destinationCoords}
             isTokenMissing={isTokenMissing}
+            source={source}
+            destination={destination}
+            loading={loading}
           />
 
           <div className="slider-panel">
@@ -276,14 +272,16 @@ function App() {
               <span>7 days</span>
             </div>
           </div>
-        </div>
+        </section>
 
-        <RouteComparisonPanel
-          routes={routes}
-          selectedRouteId={selectedRouteId}
-          onSelectRoute={setSelectedRouteId}
-          waitRecommendation={waitRecommendation}
-        />
+        <aside className="dashboard-secondary">
+          <RouteComparisonPanel
+            routes={routes}
+            selectedRouteId={selectedRouteId}
+            onSelectRoute={setSelectedRouteId}
+            waitRecommendation={waitRecommendation}
+          />
+        </aside>
       </div>
     </div>
   );

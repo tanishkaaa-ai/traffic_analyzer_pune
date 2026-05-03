@@ -15,6 +15,7 @@ function InputPanel({
 }) {
   const futureDate = futureTime ? futureTime.slice(0, 10) : "";
   const futureClockTime = futureTime ? futureTime.slice(11, 16) : "";
+  const sameLocationSelected = source === destination;
 
   const updateFutureDatePart = (dateValue) => {
     onFutureTimeChange(`${dateValue}T${futureClockTime || "00:00"}`);
@@ -106,24 +107,23 @@ function InputPanel({
           onClick={onSwapLocations}
           aria-label="Swap source and destination"
         >
-          Swap
+          Swap stops
         </button>
-        <button type="button" onClick={onGetRoute} disabled={loading}>
-          {loading ? "Loading..." : "Get Route"}
+        <button
+          type="button"
+          className="primary-action-button"
+          onClick={onGetRoute}
+          disabled={loading || sameLocationSelected}
+        >
+          {loading ? "Scoring routes..." : "Predict best route"}
         </button>
       </div>
 
-      <div className="input-footer">
-        <div className="mini-stat">
-          <span>Alternatives</span>
-          <strong>Up to 3 routes</strong>
-        </div>
-        <div className="mini-stat">
-          <span>Simulation</span>
-          <strong>Model-ranked routes</strong>
-        </div>
-      </div>
-
+      {sameLocationSelected ? (
+        <p className="error-text">
+          Source and destination need to be different to generate route comparisons.
+        </p>
+      ) : null}
       {error ? <p className="error-text">{error}</p> : null}
     </div>
   );

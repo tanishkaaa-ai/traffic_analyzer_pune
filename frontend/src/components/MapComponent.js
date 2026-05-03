@@ -10,7 +10,10 @@ function MapComponent({
   selectedRouteId,
   sourceCoords,
   destinationCoords,
-  isTokenMissing
+  isTokenMissing,
+  source,
+  destination,
+  loading
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -198,31 +201,46 @@ function MapComponent({
 
   return (
     <div className="map-card">
-      <div className="map-toolbar">
-        <div className="map-brand">
-          <span className="map-kicker">Prediction Surface</span>
-          <strong>Current Routes, Future Ranking</strong>
-        </div>
-        <div className="map-pills">
-          <span className="map-pill">Model-ranked routes</span>
-          <span className="map-pill">Courier animation</span>
-        </div>
-      </div>
-
-      <div ref={mapContainerRef} className="map-container" />
-
-      {isTokenMissing ? (
-        <div className="map-overlay">
-          <div className="map-overlay-card">
-            <p>Mapbox token needed</p>
-            <h3>Route prediction is ready</h3>
-            <span>
-              Add your Mapbox public token in <code>frontend/.env</code> to
-              unlock the live route rendering experience.
-            </span>
+      <div className="map-stage">
+        <div className="map-toolbar">
+          <div className="map-brand">
+            <span className="map-kicker">Prediction Surface</span>
+            <strong>{routes.length > 0 ? "Current Routes, Future Ranking" : "Ready for next trip"}</strong>
+          </div>
+          <div className="map-pills">
+            <span className="map-pill">{loading ? "Scoring live" : "Model-ranked routes"}</span>
+            <span className="map-pill">{`${source} to ${destination}`}</span>
           </div>
         </div>
-      ) : null}
+
+        <div ref={mapContainerRef} className="map-container" />
+
+        {!isTokenMissing && routes.length === 0 ? (
+          <div className="map-empty-state">
+            <div className="map-empty-state__card">
+              <span className="map-empty-state__eyebrow">Map preview</span>
+              <strong>Pick a trip and run a prediction</strong>
+              <p>
+                You&apos;ll see ranked route overlays, live start/end markers, and
+                the highlighted recommended path here.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {isTokenMissing ? (
+          <div className="map-overlay">
+            <div className="map-overlay-card">
+              <p>Mapbox token needed</p>
+              <h3>Route prediction is ready</h3>
+              <span>
+                Add your Mapbox public token in <code>frontend/.env</code> to
+                unlock the live route rendering experience.
+              </span>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

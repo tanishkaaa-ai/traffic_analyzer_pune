@@ -98,6 +98,7 @@ function App() {
     buildLocalDateTimeValue(buildDateFromMinutesAhead(30))
   );
   const [predictionContext, setPredictionContext] = useState(null);
+  const [waitRecommendation, setWaitRecommendation] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -146,6 +147,7 @@ function App() {
 
       setRoutes(mappedRoutes);
       setPredictionContext(response.data.prediction_context || null);
+      setWaitRecommendation(response.data.wait_recommendation || null);
       setSelectedRouteId(recommendedRoute.id);
       setRouteData(recommendedRoute);
       setSourceCoords(recommendedRoute.geometry[0] || null);
@@ -158,6 +160,7 @@ function App() {
       setRouteData(null);
       setRoutes([]);
       setPredictionContext(null);
+      setWaitRecommendation(null);
       setSelectedRouteId(null);
       setError(
         requestError.response?.data?.detail ||
@@ -279,6 +282,7 @@ function App() {
           routes={routes}
           selectedRouteId={selectedRouteId}
           onSelectRoute={setSelectedRouteId}
+          waitRecommendation={waitRecommendation}
         />
       </div>
     </div>

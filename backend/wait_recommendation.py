@@ -11,6 +11,7 @@ except ImportError:
 
 WAIT_OFFSETS_MINUTES = [10, 15, 20, 30]
 MINIMUM_TIME_SAVED_MINUTES = 5.0
+TREND_STABILITY_THRESHOLD_MINUTES = 2.0
 
 
 def extract_best_route_travel_time(prediction: dict[str, Any]) -> float:
@@ -28,6 +29,7 @@ def build_wait_recommendation(
     current_travel_time_seconds: float,
     best_offset_minutes: int,
     best_future_travel_time_seconds: float,
+    trend_points: list[dict[str, float | int | str]],
 ) -> dict[str, Any]:
     """Create the non-intrusive wait suggestion payload."""
     time_saved_minutes = round(
@@ -60,12 +62,68 @@ def build_wait_recommendation(
         message = "Leave now. Waiting is not expected to improve travel time."
         action = "LEAVE_NOW"
 
+    current_travel_time_minutes = round(current_travel_time_seconds / 60.0, 1)
+    best_future_travel_time_minutes = round(best_future_travel_time_seconds / 60.0, 1)
+    trend_direction = classify_trend_direction(
+        current_travel_time_minutes=current_travel_time_minutes,
+        best_future_travel_time_minutes=best_future_travel_time_minutes,
+    )
+    insight = build_trend_insight(
+        action=action,
+        trend_direction=trend_direction,
+        best_offset_minutes=best_offset_minutes,
+        time_saved_minutes=time_saved_minutes,
+    )
+
     return {
         "action": action,
         "wait_minutes": best_offset_minutes,
         "time_saved": time_saved_minutes,
         "message": message,
+        "current_travel_time": current_travel_time_minutes,
+        "best_future_travel_time": best_future_travel_time_minutes,
+        "trend_direction": trend_direction,
+        "trend_points": trend_points,
+        "insight": insight,
     }
+
+
+def classify_trend_direction(
+    current_travel_time_minutes: float,
+    best_future_travel_time_minutes: float,
+) -> str:
+    """Describe whether waiting seems to improve, worsen, or preserve travel time."""
+    time_delta = current_travel_time_minutes - best_future_travel_time_minutes
+
+    if time_delta >= TREND_STABILITY_THRESHOLD_MINUTES:
+        return "improving"
+
+    if time_delta <= -TREND_STABILITY_THRESHOLD_MINUTES:
+        return "worsening"
+
+    return "stable"
+
+
+def build_trend_insight(
+    action: str,
+    trend_direction: str,
+    best_offset_minutes: int,
+    time_saved_minutes: float,
+) -> str:
+    """Summarize the trend in a single sentence for the UI."""
+    if action == "WAIT":
+        if best_offset_minutes <= 15:
+            return "Traffic congestion is expected to decrease shortly."
+
+        return "Peak traffic window detected - a short delay is likely to help."
+
+    if trend_direction == "worsening":
+        return "Traffic is expected to build up, so leaving now is safer."
+
+    if trend_direction == "improving" and time_saved_minutes > 0:
+        return "Traffic may improve slightly, but waiting does not save enough time."
+
+    return "Stable traffic - no meaningful benefit in waiting."
 
 
 def predict_best_route_with_wait_recommendation(
@@ -86,6 +144,13 @@ def predict_best_route_with_wait_recommendation(
     )
     current_travel_time_seconds = extract_best_route_travel_time(current_result)
     current_dt = parse_future_time(future_time)
+    trend_points: list[dict[str, float | int | str]] = [
+        {
+            "label": "Now",
+            "offset_minutes": 0,
+            "travel_time": round(current_travel_time_seconds / 60.0, 1),
+        }
+    ]
 
     best_offset_minutes = WAIT_OFFSETS_MINUTES[0]
     best_future_travel_time_seconds = current_travel_time_seconds
@@ -102,6 +167,13 @@ def predict_best_route_with_wait_recommendation(
         time_saved_minutes = (
             current_travel_time_seconds - future_travel_time_seconds
         ) / 60.0
+        trend_points.append(
+            {
+                "label": f"+{offset_minutes} min",
+                "offset_minutes": offset_minutes,
+                "travel_time": round(future_travel_time_seconds / 60.0, 1),
+            }
+        )
 
         if (
             time_saved_minutes > best_time_saved_minutes
@@ -119,5 +191,6 @@ def predict_best_route_with_wait_recommendation(
         current_travel_time_seconds=current_travel_time_seconds,
         best_offset_minutes=best_offset_minutes,
         best_future_travel_time_seconds=best_future_travel_time_seconds,
+        trend_points=trend_points,
     )
     return response

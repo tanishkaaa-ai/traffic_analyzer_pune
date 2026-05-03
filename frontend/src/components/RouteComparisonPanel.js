@@ -1,6 +1,11 @@
 import React, { useMemo } from "react";
 
-function RouteComparisonPanel({ routes = [], selectedRouteId, onSelectRoute }) {
+function RouteComparisonPanel({
+  routes = [],
+  selectedRouteId,
+  onSelectRoute,
+  waitRecommendation
+}) {
   const sortedRoutes = useMemo(
     () => [...routes].sort((a, b) => (a.duration ?? 0) - (b.duration ?? 0)),
     [routes]
@@ -27,6 +32,36 @@ function RouteComparisonPanel({ routes = [], selectedRouteId, onSelectRoute }) {
     if (isWorstRoute(route)) return "route-tag--red";
     return "route-tag--yellow";
   };
+
+  const trendPoints = waitRecommendation?.trend_points || [];
+  const trendMax = Math.max(
+    ...trendPoints.map((point) => Number(point.travel_time ?? 0)),
+    1
+  );
+
+  const trendDirectionLabel = (() => {
+    if (waitRecommendation?.trend_direction === "improving") {
+      return "\u2193 improving";
+    }
+
+    if (waitRecommendation?.trend_direction === "worsening") {
+      return "\u2191 worsening";
+    }
+
+    return "\u2192 stable";
+  })();
+
+  const trendDirectionClass = (() => {
+    if (waitRecommendation?.trend_direction === "improving") {
+      return "decision-trend-badge--improving";
+    }
+
+    if (waitRecommendation?.trend_direction === "worsening") {
+      return "decision-trend-badge--worsening";
+    }
+
+    return "decision-trend-badge--stable";
+  })();
 
   return (
     <aside className="route-comparison-panel">
@@ -86,6 +121,84 @@ function RouteComparisonPanel({ routes = [], selectedRouteId, onSelectRoute }) {
           );
         })}
       </div>
+
+      {waitRecommendation ? (
+        <div className="decision-support-stack">
+          <div
+            className={`decision-card decision-card--primary ${
+              waitRecommendation.action === "WAIT"
+                ? "decision-card--wait"
+                : "decision-card--leave"
+            }`}
+          >
+            <div className="decision-card__header">
+              <span className="decision-card__eyebrow">Smart Suggestion</span>
+            </div>
+            <div className="decision-card__content">
+              {waitRecommendation.action === "WAIT" ? (
+                <p className="decision-card__headline">
+                  <span className="decision-card__icon" aria-hidden="true">
+                    ⏳
+                  </span>
+                  <span>
+                    Wait <strong>{waitRecommendation.wait_minutes} mins</strong>
+                    {" "}
+                    - Save <strong>~{waitRecommendation.time_saved} mins</strong>
+                  </span>
+                </p>
+              ) : (
+                <p className="decision-card__headline">
+                  <span className="decision-card__icon" aria-hidden="true">
+                    🚀
+                  </span>
+                  <span>Best to leave now</span>
+                </p>
+              )}
+              <small>{waitRecommendation.message}</small>
+            </div>
+          </div>
+
+          <div className="decision-card">
+            <div className="decision-card__header">
+              <span className="decision-card__eyebrow">Traffic Trend</span>
+              <span className={`decision-trend-badge ${trendDirectionClass}`}>
+                {trendDirectionLabel}
+              </span>
+            </div>
+            <div className="decision-trend-list">
+              {trendPoints.map((point) => {
+                const travelTime = Number(point.travel_time ?? 0);
+                const widthPercent = Math.max((travelTime / trendMax) * 100, 10);
+
+                return (
+                  <div
+                    key={`${point.label}-${point.offset_minutes}`}
+                    className="decision-trend-row"
+                  >
+                    <div className="decision-trend-row__copy">
+                      <span>{point.label}</span>
+                      <strong>{travelTime.toFixed(1)} mins</strong>
+                    </div>
+                    <div className="decision-trend-row__bar">
+                      <div
+                        className="decision-trend-row__fill"
+                        style={{ width: `${widthPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="decision-card">
+            <div className="decision-card__header">
+              <span className="decision-card__eyebrow">Smart Insight</span>
+            </div>
+            <p className="decision-card__insight">{waitRecommendation.insight}</p>
+          </div>
+        </div>
+      ) : null}
     </aside>
   );
 }

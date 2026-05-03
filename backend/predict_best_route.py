@@ -45,6 +45,7 @@ FEATURE_COLUMNS = [
     "avg_speed",
     "delay_ratio",
     "minute",
+    "minute_of_day",
 ]
 
 ESTIMATE_COLUMNS = [
@@ -127,8 +128,8 @@ def hour_distance(candidate_hour: int, target_hour: int) -> int:
 
 
 def get_future_route_estimates(
-    origin: str,
-    destination: str,
+    origin_encoded: int,
+    destination_encoded: int,
     future_hour: int,
     future_day: int,
     future_minute: int,
@@ -141,14 +142,15 @@ def get_future_route_estimates(
     """
     dataset = load_historical_dataset()
     place_rows = dataset[
-        (dataset["origin"] == origin)
-        & (dataset["destination"] == destination)
+        (dataset["origin"] == origin_encoded)
+        & (dataset["destination"] == destination_encoded)
         & (dataset["day_of_week"] == future_day)
     ]
 
     if place_rows.empty:
         place_rows = dataset[
-            (dataset["origin"] == origin) & (dataset["destination"] == destination)
+            (dataset["origin"] == origin_encoded)
+            & (dataset["destination"] == destination_encoded)
         ]
 
     if place_rows.empty:
@@ -219,7 +221,7 @@ def extract_route_features(
     future_estimates: dict[int, dict[str, float]] | None = None,
 ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     """Convert TomTom route summaries into the exact feature layout used by training."""
-    feature_rows: list[list[float | int]] = []
+    feature_rows: list[dict[str, float | int]] = []
     route_summaries: list[dict[str, Any]] = []
 
     for route_index, route in enumerate(routes):
@@ -243,18 +245,19 @@ def extract_route_features(
             delay_ratio = estimate["delay_ratio"]
 
         feature_rows.append(
-            [
-                origin_encoded,
-                destination_encoded,
-                future_hour,
-                future_minute,
-                future_day,
-                travel_time,
-                distance,
-                traffic_delay,
-                avg_speed,
-                delay_ratio,
-            ]
+            {
+                "origin": origin_encoded,
+                "destination": destination_encoded,
+                "hour": future_hour,
+                "day_of_week": future_day,
+                "travel_time": travel_time,
+                "distance": distance,
+                "traffic_delay": traffic_delay,
+                "avg_speed": avg_speed,
+                "delay_ratio": delay_ratio,
+                "minute": future_minute,
+                "minute_of_day": future_hour * 60 + future_minute,
+            }
         )
 
         route_summaries.append(
@@ -351,8 +354,8 @@ def predict_best_route(
     origin_encoded = place_mapping[origin]
     destination_encoded = place_mapping[destination]
     future_estimates = get_future_route_estimates(
-        origin=origin,
-        destination=destination,
+        origin_encoded=origin_encoded,
+        destination_encoded=destination_encoded,
         future_hour=future_hour,
         future_day=future_day,
         future_minute=future_minute,
@@ -382,6 +385,7 @@ def predict_best_route(
         "prediction_context": {
             "future_time": future_dt.isoformat(),
             "future_hour": future_hour,
+            "future_minute": future_minute,
             "future_day": future_day,
             "uses_future_estimates": bool(future_estimates),
         },

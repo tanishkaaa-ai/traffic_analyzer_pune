@@ -10,7 +10,7 @@
   --primary-dark: #9a3412;
   --accent: #1d4ed8;
   --success: #22c55e;
-  --warning: #facc15;
+  --warning: #f59e0b;
   --danger: #ef4444;
   --shadow: 0 18px 45px rgba(44, 28, 17, 0.12);
 }
@@ -426,13 +426,29 @@ select {
   align-items: flex-start;
 }
 
+.slider-header-copy {
+  flex: 1;
+}
+
 .slider-header span {
   display: block;
   font-weight: 800;
 }
 
+.slider-header-value {
+  text-align: right;
+}
+
 .slider-header strong {
   font-size: 1.2rem;
+  display: block;
+}
+
+.slider-header-value small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .slider-scale {
@@ -524,6 +540,7 @@ select {
 }
 
 .route-list,
+.comparison-chart,
 .legend {
   display: flex;
   flex-direction: column;
@@ -561,8 +578,67 @@ select {
   font-style: normal;
   font-size: 0.78rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.02em;
+}
+
+.comparison-chart {
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.64);
+  border: 1px solid rgba(24, 33, 47, 0.08);
+}
+
+.comparison-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comparison-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 88px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.comparison-row-best .comparison-copy span,
+.comparison-row-best strong {
+  font-weight: 800;
+}
+
+.comparison-row-best .comparison-bar-track {
+  height: 16px;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+}
+
+.comparison-copy span,
+.comparison-copy small {
+  display: block;
+}
+
+.comparison-copy small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.comparison-bar-track {
+  position: relative;
+  width: 100%;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(24, 33, 47, 0.08);
+  overflow: hidden;
+}
+
+.comparison-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.2s ease;
+}
+
+.comparison-bar-fill-best {
+  box-shadow: 0 8px 18px rgba(34, 197, 94, 0.24);
 }
 
 .legend-item {
@@ -582,7 +658,7 @@ select {
   background: var(--success);
 }
 
-.yellow {
+.orange {
   background: var(--warning);
 }
 
@@ -632,11 +708,20 @@ select {
     flex-direction: column;
   }
 
+  .slider-header-value {
+    text-align: left;
+  }
+
   .input-grid {
     grid-template-columns: 1fr;
   }
 
   .map-container {
     min-height: 420px;
+  }
+
+  .comparison-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 }

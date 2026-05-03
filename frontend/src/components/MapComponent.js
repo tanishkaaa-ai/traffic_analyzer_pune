@@ -204,7 +204,7 @@ function MapComponent({
           <strong>Current Routes, Future Ranking</strong>
         </div>
         <div className="map-pills">
-          <span className="map-pill">Backend-ranked routes</span>
+          <span className="map-pill">Model-ranked routes</span>
           <span className="map-pill">Courier animation</span>
         </div>
       </div>
@@ -215,7 +215,7 @@ function MapComponent({
         <div className="map-overlay">
           <div className="map-overlay-card">
             <p>Mapbox token needed</p>
-            <h3>Backend integration is ready</h3>
+            <h3>Route prediction is ready</h3>
             <span>
               Add your Mapbox public token in <code>frontend/.env</code> to
               unlock the live route rendering experience.

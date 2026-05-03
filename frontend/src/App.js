@@ -3,6 +3,10 @@ import axios from "axios";
 import InputPanel from "./components/InputPanel";
 import MapComponent from "./components/MapComponent";
 import RoutePanel from "./components/RoutePanel";
+import {
+  formatMinutesAhead,
+  formatSelectedTime
+} from "./utils/formatters";
 
 const MAPBOX_TOKEN =
   process.env.REACT_APP_MAPBOX_TOKEN || "YOUR_MAPBOX_TOKEN";
@@ -198,7 +202,7 @@ function App() {
             <strong>Road Logistics</strong>
           </div>
           <div className="header-badge status-badge">
-            <span>Backend</span>
+            <span>Prediction API</span>
             <strong>{loading ? "Predicting" : "API ready"}</strong>
           </div>
         </div>
@@ -233,14 +237,17 @@ function App() {
 
           <div className="slider-panel">
             <div className="slider-header">
-              <div>
+              <div className="slider-header-copy">
                 <span>Traffic Prediction Window</span>
                 <p>
-                  Pick how far into the future the backend should score the
+                  Pick how far into the future the model should score the
                   current route options.
                 </p>
               </div>
-              <strong>{sliderTime} mins</strong>
+              <div className="slider-header-value">
+                <strong>{`Prediction Window: ${formatMinutesAhead(sliderTime)}`}</strong>
+                <small>{`Selected Time: ${formatSelectedTime(futureTime)}`}</small>
+              </div>
             </div>
             <input
               type="range"

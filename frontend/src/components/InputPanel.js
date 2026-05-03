@@ -120,7 +120,7 @@ function InputPanel({
         </div>
         <div className="mini-stat">
           <span>Simulation</span>
-          <strong>Backend-ranked routes</strong>
+          <strong>Model-ranked routes</strong>
         </div>
       </div>
 
